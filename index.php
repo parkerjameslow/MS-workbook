@@ -8630,99 +8630,92 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <label>Product Name</label>
           <input type="text" placeholder="e.g. Custom Tote Bag" id="product-name" />
         </div>
+        <!-- Product Description (left) + Technical Specifications (right),
+             side by side. Each takes ~half the width. The rich-text editor
+             wraps #product-desc in place (initRichEditors), so it works
+             wherever the textarea lives. -->
         <div class="field col-full">
-          <label>Product Description</label>
-          <textarea placeholder="Describe the product — intended use, key features, special requirements…" id="product-desc" data-rich="1"></textarea>
+          <div class="wb-desc-specs" style="display:flex; gap:20px; align-items:stretch; flex-wrap:wrap;">
+            <!-- Left — Product Description -->
+            <div style="flex:1 1 360px; min-width:0; display:flex; flex-direction:column;">
+              <label>Product Description</label>
+              <textarea placeholder="Describe the product — intended use, key features, special requirements…" id="product-desc" data-rich="1"></textarea>
+            </div>
+            <!-- Right — Technical Specifications -->
+            <div style="flex:1 1 300px; min-width:0; display:flex; flex-direction:column;">
+              <label>Technical Specifications</label>
+              <div style="border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); padding:14px; display:flex; flex-direction:column; gap:14px; flex:1 1 auto;">
+                <div class="field" style="margin:0;">
+                  <label>Product Category</label>
+                  <div class="select-wrapper">
+                    <select id="product-category" onchange="updateSubcategories()">
+                      <option value="">Select category...</option>
+                      <option value="packaging">Packaging</option>
+                      <option value="apparel">Apparel</option>
+                      <option value="furniture">Furniture</option>
+                      <option value="electronics">Electronics</option>
+                      <option value="promotional">Promotional Products</option>
+                      <option value="food-beverage">Food & Beverage</option>
+                      <option value="toys">Toys & Games</option>
+                      <option value="beauty">Beauty & Personal Care</option>
+                      <option value="home-garden">Home & Garden</option>
+                      <option value="sports">Sports & Outdoors</option>
+                      <option value="stationery">Stationery & Office</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field" style="margin:0;">
+                  <label>Material</label>
+                  <!-- Manual, free-text material. Replaces the old category-driven
+                       dropdown + "Other…" + secondary machinery. Feeds
+                       detail.productMaterial AND (for legacy readers / CSV
+                       export / history) detail.productSubcategory on save. -->
+                  <input type="text" id="product-material-manual" placeholder="e.g. Microfiber, 304 Stainless Steel…"
+                         oninput="_onManualMaterial()" style="width:100%; box-sizing:border-box;" />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- ── Technical Specifications ── -->
-      <div class="subsection">
-        <div class="subsection-title">Technical Specifications</div>
-
-        <!-- Category / Subcategory -->
-        <div class="form-grid form-grid-2">
-          <div class="field">
-            <label>Product Category</label>
-            <div class="select-wrapper">
-              <select id="product-category" onchange="updateSubcategories()">
-                <option value="">Select category...</option>
-                <option value="packaging">Packaging</option>
-                <option value="apparel">Apparel</option>
-                <option value="furniture">Furniture</option>
-                <option value="electronics">Electronics</option>
-                <option value="promotional">Promotional Products</option>
-                <option value="food-beverage">Food & Beverage</option>
-                <option value="toys">Toys & Games</option>
-                <option value="beauty">Beauty & Personal Care</option>
-                <option value="home-garden">Home & Garden</option>
-                <option value="sports">Sports & Outdoors</option>
-                <option value="stationery">Stationery & Office</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div class="secondary-select-wrap" id="cat2-wrap">
-              <div class="secondary-select-label">Secondary Category</div>
-              <div class="select-wrapper">
-                <select id="product-category-2" disabled onchange="onSecondaryChange('cat2-wrap', this); updateSubcategories();">
-                  <option value="">None</option>
-                  <option value="packaging">Packaging</option>
-                  <option value="apparel">Apparel</option>
-                  <option value="furniture">Furniture</option>
-                  <option value="electronics">Electronics</option>
-                  <option value="promotional">Promotional Products</option>
-                  <option value="food-beverage">Food &amp; Beverage</option>
-                  <option value="toys">Toys &amp; Games</option>
-                  <option value="beauty">Beauty &amp; Personal Care</option>
-                  <option value="home-garden">Home &amp; Garden</option>
-                  <option value="sports">Sports &amp; Outdoors</option>
-                  <option value="stationery">Stationery &amp; Office</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="field">
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-              <label style="margin:0;">Material Type</label>
-              <!-- Tick to surface a SECOND material selector inline beside
-                   the primary one. When unchecked the secondary value is
-                   cleared so it doesn't sneak into saves. State persists
-                   to detail.materialSecondEnabled. -->
-              <label style="display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--text-muted); cursor:pointer; user-select:none; text-transform:none; letter-spacing:0; font-weight:500;">
-                <input type="checkbox" id="mat2-toggle" onchange="onMat2ToggleVisibility()"
-                  style="width:13px; height:13px; accent-color:var(--accent); cursor:pointer; margin:0;" />
-                + Add second material
-              </label>
-            </div>
-            <div id="mat-inline-row" style="display:flex; gap:10px; align-items:flex-start;">
-              <div style="flex:1; min-width:0;">
-                <div class="select-wrapper">
-                  <select id="product-subcategory" onchange="checkSecondaryLock(); _onMaterialChange()">
-                    <option value="">Select category first...</option>
-                  </select>
-                </div>
-                <!-- "Other" follow-up — shown only when the primary material
-                     is set to "Other" so the operator can type a custom
-                     material name. Saved as productSubcategoryOther on detail_json. -->
-                <input type="text" id="product-subcategory-other" placeholder="Specify the material…"
-                       oninput="autoSaveWorkbook && autoSaveWorkbook()"
-                       style="display:none; margin-top:6px; width:100%; box-sizing:border-box;" />
-              </div>
-              <div class="secondary-select-wrap" id="mat2-wrap" style="display:none; flex:1; min-width:0; margin-top:0;">
-                <div class="select-wrapper">
-                  <select id="product-subcategory-2" disabled onchange="onSecondaryChange('mat2-wrap', this); _onMaterialChange()">
-                    <option value="">None</option>
-                  </select>
-                </div>
-                <input type="text" id="product-subcategory-other-2" placeholder="Specify the secondary material…"
-                       oninput="autoSaveWorkbook && autoSaveWorkbook()"
-                       style="display:none; margin-top:6px; width:100%; box-sizing:border-box;" />
-              </div>
-            </div>
-          </div>
+      <!-- Legacy Technical Specifications fields — kept in the DOM but hidden
+           so the existing save/load + helper JS (updateSubcategories,
+           checkSecondaryLock, _onMaterialChange, onMat2ToggleVisibility, fill)
+           keep working and old workbooks still round-trip. The visible
+           Material field above is the source of truth going forward. -->
+      <div style="display:none;" aria-hidden="true">
+        <div class="secondary-select-wrap" id="cat2-wrap">
+          <select id="product-category-2" disabled onchange="onSecondaryChange('cat2-wrap', this); updateSubcategories();">
+            <option value="">None</option>
+            <option value="packaging">Packaging</option>
+            <option value="apparel">Apparel</option>
+            <option value="furniture">Furniture</option>
+            <option value="electronics">Electronics</option>
+            <option value="promotional">Promotional Products</option>
+            <option value="food-beverage">Food &amp; Beverage</option>
+            <option value="toys">Toys &amp; Games</option>
+            <option value="beauty">Beauty &amp; Personal Care</option>
+            <option value="home-garden">Home &amp; Garden</option>
+            <option value="sports">Sports &amp; Outdoors</option>
+            <option value="stationery">Stationery &amp; Office</option>
+            <option value="other">Other</option>
+          </select>
         </div>
-
+        <select id="product-subcategory" onchange="checkSecondaryLock(); _onMaterialChange()">
+          <option value="">Select category first...</option>
+        </select>
+        <input type="text" id="product-subcategory-other" placeholder="Specify the material…"
+               oninput="autoSaveWorkbook && autoSaveWorkbook()" />
+        <label><input type="checkbox" id="mat2-toggle" onchange="onMat2ToggleVisibility()" /></label>
+        <div class="secondary-select-wrap" id="mat2-wrap">
+          <select id="product-subcategory-2" disabled onchange="onSecondaryChange('mat2-wrap', this); _onMaterialChange()">
+            <option value="">None</option>
+          </select>
+          <input type="text" id="product-subcategory-other-2" placeholder="Specify the secondary material…"
+                 oninput="autoSaveWorkbook && autoSaveWorkbook()" />
+        </div>
         <!-- Hidden fields to preserve existing data -->
         <input type="hidden" id="materials" />
         <input type="hidden" id="pantone-text" />
@@ -14962,6 +14955,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const inp2 = document.getElementById('product-subcategory-other-2');
     if (inp)  inp.style.display  = (sel  && sel.value  === 'Other') ? '' : 'none';
     if (inp2) inp2.style.display = (sel2 && sel2.value === 'Other') ? '' : 'none';
+  }
+
+  // Manual, free-text Material field (the simplified Technical Specifications
+  // box). Mirrors into the legacy "Other" input so any code still reading that
+  // sees the value, then autosaves. collectWorkbookDetail also folds this into
+  // productSubcategory so CSV export / history keep showing the material.
+  function _onManualMaterial() {
+    const v = (document.getElementById('product-material-manual')?.value || '').trim();
+    const legacyOther = document.getElementById('product-subcategory-other');
+    if (legacyOther) legacyOther.value = v;
+    if (typeof autoSaveWorkbook === 'function' && !_filling) { try { autoSaveWorkbook(); } catch (e) {} }
   }
 
   function checkSecondaryLock() {
@@ -37975,7 +37979,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       'dim-in-l','dim-in-w','dim-in-h','dim-cm-l','dim-cm-w','dim-cm-h',
       'dim-mm-l','dim-mm-w','dim-mm-h',
       'dim-weight-kg','dim-weight-lbs','dim-weight-oz','dim-packaging',
-      'product-category','product-category-2','materials','pantone-text','cmyk','color-notes',
+      'product-category','product-category-2','product-material-manual','materials','pantone-text','cmyk','color-notes',
       // Carton — inner
       'carton-inner-l-in','carton-inner-l-cm','carton-inner-w-in','carton-inner-w-cm','carton-inner-h-in','carton-inner-h-cm',
       'carton-inner-weight','carton-inner-weight-lbs','carton-inner-weight-oz','carton-inner-count','carton-inner-row','carton-inner-side','carton-inner-stack','carton-inner-wall',
@@ -38174,6 +38178,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // the visibility based on the select state.
       _s('product-subcategory-other',   data.productSubcategoryOther  || '');
       _s('product-subcategory-other-2', data.productSubcategoryOther2 || '');
+      // Manual Material field (Technical Specifications box). Prefer the new
+      // productMaterial; fall back to legacy fields so older workbooks show
+      // their material as editable free text (the "Other…" custom name, else
+      // the saved subcategory value).
+      _s('product-material-manual',
+         data.productMaterial || data.productSubcategoryOther || data.productSubcategory || '');
       // Pallet Max Height — restore from this workbook's saved value
       // (data.palletMaxHeight). Falls back to the HTML default of 60"
       // for legacy workbooks that never saved this field. The
@@ -41793,7 +41803,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // with the toggle checked) but also persisted on its own so the
       // toggle state is sticky even when the operator clears the value.
       materialSecondEnabled: !!document.getElementById('mat2-toggle')?.checked,
-      productSubcategory: _v('product-subcategory'),
+      // Manual free-text Material (Technical Specifications box). The source of
+      // truth going forward. Folded into productSubcategory below so legacy
+      // readers (CSV export 'Material Type', history diffs) still see it.
+      productMaterial: _v('product-material-manual'),
+      // Prefer the legacy dropdown value when present (old workbooks), else the
+      // manual Material field (new workbooks).
+      productSubcategory: _v('product-subcategory') || _v('product-material-manual'),
       productSubcategory2: _v('product-subcategory-2'),
       // Free-text follow-up shown only when the matching subcategory
       // is "Other". Persists alongside the select value so reloads
@@ -46226,24 +46242,42 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       };
       return map[carrier] || '';
     };
-    host.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px;">${
+    // Shared column template so the header row and every tracking row line up:
+    // Carrier (fixed) | Description (flex) | Tracking # (flex, a touch wider) | ↗ | ×
+    const _trkCols = 'grid-template-columns:150px minmax(120px,1fr) minmax(150px,1.2fr) 30px 30px; gap:8px;';
+    const _trkHdr  = 'font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);';
+    host.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px;">
+      <div style="display:grid; ${_trkCols} align-items:center; padding:0 2px;">
+        <span style="${_trkHdr}">Carrier</span>
+        <span style="${_trkHdr}">Description</span>
+        <span style="${_trkHdr}">Tracking #</span>
+        <span></span><span></span>
+      </div>
+      ${
       s.trackings.map((t, idx) => {
         const numEsc  = (t.number || '').replace(/"/g, '&quot;');
+        const descEsc = (t.desc   || '').replace(/"/g, '&quot;');
         const url     = _trackingUrlFor(t.carrier, t.number);
         const canOpen = !!url;
         return `
-        <div style="display:grid; grid-template-columns:160px 1fr auto auto; gap:8px; align-items:center;">
+        <div style="display:grid; ${_trkCols} align-items:center;">
           <select onchange="updateShipmentTracking(${idx}, 'carrier', this.value); _renderShipmentDetailTrackings();"
-                  style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:7px 22px 7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; cursor:pointer;">
+                  style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:7px 22px 7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; cursor:pointer; min-width:0;">
             ${CARRIERS.map(c => `<option value="${c.v}"${c.v === (t.carrier || '') ? ' selected' : ''}>${c.lbl}</option>`).join('')}
           </select>
-          <input type="text" value="${numEsc}" placeholder="Type or paste tracking number — edit any time"
+          <input type="text" value="${descEsc}" placeholder="Add a note (optional)"
+                 oninput="updateShipmentTracking(${idx}, 'desc', this.value)"
+                 onfocus="this.style.borderColor='var(--accent)';"
+                 onblur="this.style.borderColor='var(--border)';"
+                 title="Optional note for this tracking entry — e.g. which cartons, who booked it"
+                 style="min-width:0; padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; transition:border-color 0.15s;" />
+          <input type="text" value="${numEsc}" placeholder="Tracking number"
                  data-tracking-idx="${idx}"
                  oninput="updateShipmentTracking(${idx}, 'number', this.value)"
                  onfocus="this.select(); this.style.borderColor='var(--accent)';"
                  onblur="this.style.borderColor='var(--border)'; _renderShipmentDetailTrackings();"
                  title="Click to edit. Tab away to save."
-                 style="padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:'SF Mono','Consolas',monospace; transition:border-color 0.15s;" />
+                 style="min-width:0; padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:'SF Mono','Consolas',monospace; transition:border-color 0.15s;" />
           ${canOpen
             ? `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation();"
                   title="Open carrier tracking page in a new tab"
