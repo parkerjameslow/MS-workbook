@@ -7200,6 +7200,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .sc-wb-pill:hover { border-color: var(--accent); background: rgba(107,147,255,0.18); }
     .sc-wb-pill-arrow { font-size: 11px; opacity: 0.75; flex-shrink: 0; }
+    /* Arrows removed from record-link pills site-wide (per operator preference) —
+       the pills still navigate on click; the "→" affordance is just hidden. */
+    .sc-wb-pill-arrow, .inv-wb-pill-arrow, .comm-wb-arrow { display: none !important; }
     /* Right: stats + status inline */
     .sc-right-wrap {
       flex: 1; min-width: 0;
@@ -8440,7 +8443,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div id="client-wb-bulk-bar" style="display:none; align-items:center; gap:10px;">
           <strong style="font-size:13px; color:var(--accent);"><span id="client-wb-bulk-count">0</span> selected</strong>
           <button class="btn btn-ghost" style="font-size:12px; padding:6px 12px;" onclick="clearClientWbSelection()">Clear</button>
-          <button class="btn btn-primary" style="font-size:12px; padding:6px 14px;" onclick="openClientWbBulkPrompt()">Move to → </button>
+          <button class="btn btn-primary" style="font-size:12px; padding:6px 14px;" onclick="openClientWbBulkPrompt()">Move to…</button>
         </div>
         <button class="btn-create" onclick="openNewWorkbookModal()" style="font-size:13px; padding:8px 16px;">+ Add Workbook</button>
       </div>
@@ -10609,7 +10612,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div id="rfq-queue-bulk-bar" style="display:none; align-items:center; gap:10px;">
           <strong style="font-size:13px; color:var(--accent);"><span id="rfq-queue-bulk-count">0</span> selected</strong>
           <button class="btn btn-ghost" style="font-size:12px; padding:6px 12px;" onclick="clearRfqQueueSelection()">Clear</button>
-          <button class="btn btn-primary" style="font-size:12px; padding:6px 14px;" onclick="openBulkReviewPrompt()">Send to Review →</button>
+          <button class="btn btn-primary" style="font-size:12px; padding:6px 14px;" onclick="openBulkReviewPrompt()">Send to Review</button>
         </div>
       </div>
       <div class="section-body" style="padding:0;">
@@ -34216,7 +34219,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (cb) { cb.disabled = committed; cb.style.opacity = committed ? '0.5' : ''; cb.style.cursor = committed ? 'not-allowed' : ''; cb.textContent = committed ? 'Committed ✓' : 'Commit to Client + Workbook'; }
     const note = document.getElementById('quote-committed-note');
     if (note) {
-      if (committed) { note.style.display = ''; note.innerHTML = `Committed to <strong>${_quoteEsc(q.committedTo.client)}</strong> — <a href="#" onclick="event.preventDefault(); _openCommittedWorkbook()">open workbook →</a>`; }
+      if (committed) { note.style.display = ''; note.innerHTML = `Committed to <strong>${_quoteEsc(q.committedTo.client)}</strong> — <a href="#" onclick="event.preventDefault(); _openCommittedWorkbook()">open workbook</a>`; }
       else note.style.display = 'none';
     }
     const del = document.getElementById('quote-delete-btn');
@@ -46655,14 +46658,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const detail = workbookDetail[key] || {};
         const prod   = detail.product || wbEntry.workbookId;
         const href   = `#/client/${encodeURIComponent(wbEntry.clientName)}/workbook/${wbEntry.workbookId}`;
-        return `<span class="soc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/shipment/${_currentShipmentId}'; _wbBackLabel='Back to Shipment'; location.hash='${href}'">${prod} →</span>`;
+        return `<span class="soc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/shipment/${_currentShipmentId}'; _wbBackLabel='Back to Shipment'; location.hash='${href}'">${prod}</span>`;
       }).join('');
 
       const crBanner = order.changeRequested
         ? `<div class="soc-cr-banner">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
             <span>Change request pending — <strong>hold this order</strong></span>
-            <a href="#/order/${entry.orderId}" onclick="event.stopPropagation(); location.hash='#/order/${entry.orderId}'">View Request →</a>
+            <a href="#/order/${entry.orderId}" onclick="event.stopPropagation(); location.hash='#/order/${entry.orderId}'">View Request</a>
            </div>`
         : (order.clientApproved
           ? `<div class="soc-cr-banner" style="background:rgba(39,174,96,0.10); border-color:rgba(39,174,96,0.35); color:#16a34a;">
@@ -48012,7 +48015,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <span style="font-size:12px; color:var(--text-muted);" title="ETA / delivery date">${_esc(_recDateLabel(id))}</span>
         <span style="margin-left:auto; display:flex; gap:8px; align-items:center;" onclick="event.stopPropagation();">
           <a href="${carrierUrl}" target="_blank" rel="noopener" style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:var(--text); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);" title="Open carrier tracking page">${_esc(s.trackingNumber || '—')} ↗</a>
-          <button class="btn btn-ghost" style="font-size:12px;" onclick="event.stopPropagation(); location.hash='#/shipment/${id}'" title="Open this shipment's detail page — orders, workbooks, trackings &amp; costs">View Shipment →</button>
+          <span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='#/shipment/${id}'" title="Open this shipment's detail page — orders, workbooks, trackings &amp; costs">View Shipment</span>
           <button class="btn btn-ghost" style="font-size:12px;" onclick="event.stopPropagation(); openReceivedModal('${id}','receiving')" title="Open the per-workbook receiving audit to confirm receipt.">Receiving</button>
         </span>
       </div>
@@ -56594,7 +56597,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         : '';
       return `<div class="oc-wb-row">
         ${marginBadge}
-        <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/fulfillment'; _wbBackLabel='Back to In Production'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
+        <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/fulfillment'; _wbBackLabel='Back to In Production'; location.hash='${href}'">${prod}</span>
         <span class="oc-wb-assignee" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + e.clientName + '|' + e.workbookId, true) : ''}</span>
         ${priceStr}
       </div>`;
@@ -57076,7 +57079,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
               ? `<span class="oc-wb-prices">${wbRmb ? `<span>${wbRmb}</span>` : ''}${wbUsd ? `<span style="${wbRmb ? 'border-left:1px solid var(--border); padding-left:10px; margin-left:10px;' : ''}color:var(--text);">${wbUsd}</span>` : ''}</span>`
               : '';
             return `<div class="oc-wb-row">
-              <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/orders'; _wbBackLabel='Back to Orders'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
+              <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/orders'; _wbBackLabel='Back to Orders'; location.hash='${href}'">${prod}</span>
               <span class="oc-wb-assignee" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + key, true) : ''}</span>
               ${priceStr}
             </div>`;
@@ -58658,7 +58661,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <td>
           ${chevron}<a class="order-sheet-product-link" href="${wbHref}"
             onclick="event.stopPropagation(); _wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
-            ${esc(product)} <span style="font-size:11px; opacity:0.5;">→</span>
+            ${esc(product)}
           </a>
           ${(typeof _assigneeSpotHtml === 'function') ? '<span onclick="event.stopPropagation();" style="margin-left:8px; display:inline-flex; vertical-align:middle;">' + _assigneeSpotHtml('wb:' + key, true) + '</span>' : ''}
           ${_artPill}
@@ -59011,7 +59014,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const karenBtn = (type === 'deposit') ? (fullyPaid
         ? `<button type="button" onclick="openReadyForKaren(${_currentOrderId})"
              title="Preview the invoice and hand Karen the link to move this order into production"
-             style="margin-left:8px; font-size:11px; font-weight:700; padding:5px 12px; border-radius:6px; border:1px solid #16a34a; background:#16a34a; color:#fff; cursor:pointer; font-family:inherit; white-space:nowrap;">Ready for Karen →</button>`
+             style="margin-left:8px; font-size:11px; font-weight:700; padding:5px 12px; border-radius:6px; border:1px solid #16a34a; background:#16a34a; color:#fff; cursor:pointer; font-family:inherit; white-space:nowrap;">Ready for Karen</button>`
         : `<button type="button" disabled
              title="Record the deposit payment first — this enables once the deposit is fully paid"
              style="margin-left:8px; font-size:11px; font-weight:700; padding:5px 12px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text-muted); cursor:not-allowed; font-family:inherit; white-space:nowrap; opacity:0.65;">Ready for Karen</button>`
