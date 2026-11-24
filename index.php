@@ -8083,7 +8083,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <!-- Add buttons at top -->
   <div style="padding: 0 10px 10px; display: flex; flex-direction: column; gap: 5px;">
     <button class="sidebar-add-btn" onclick="openNewWorkbookModal()">+ Add Workbook</button>
-    <button class="sidebar-add-btn" onclick="openAddClientModal()">+ Add Client</button>
   </div>
   <hr style="border:none; border-top:1px solid var(--border); margin: 0 0 6px;" />
 
@@ -8139,13 +8138,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </a>
   </div>
 
-  <!-- Client Quotes — staging area of draft workbooks; commit to a client
-       when they say yes. Quick Quote = internal margin calculator. -->
+  <!-- Quick Quote = internal margin calculator. (Client Quotes moved to the
+       Clients dashboard header as a top-right button.) -->
   <div style="padding: 0 10px 8px;">
-    <a id="nav-quotes-link" href="#/quotes" onclick="event.preventDefault(); location.hash='#/quotes'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
-      <span>Client Quotes</span>
-    </a>
-    <a id="nav-quickquote-link" href="#/quickquote" onclick="event.preventDefault(); location.hash='#/quickquote'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px; margin-top:4px;">
+    <a id="nav-quickquote-link" href="#/quickquote" onclick="event.preventDefault(); location.hash='#/quickquote'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
       <span>Quick Quote</span>
     </a>
   </div>
@@ -11654,7 +11650,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <h1 style="font-size:18px; font-weight:700; color:var(--text); margin:0;">Clients</h1>
       <input type="text" id="clients-search" placeholder="Search clients…" oninput="renderClientsView()" autocomplete="off"
         style="flex:0 1 240px; min-width:160px; padding:7px 10px; font-size:13px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none;" />
+      <!-- + Add Client — moved here from the left nav, sits beside the search. -->
+      <button type="button" onclick="openAddClientModal()"
+        style="padding:7px 14px; font-size:13px; font-weight:700; font-family:inherit; border:1px solid var(--accent); border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; white-space:nowrap;">+ Add Client</button>
       <span id="clients-count-note" style="font-size:11px; color:var(--text-muted);"></span>
+      <!-- Client Quotes — moved here from the left nav; pinned to the right. -->
+      <button type="button" onclick="location.hash='#/quotes'" title="Open Client Quotes — draft workbooks for prospects"
+        style="margin-left:auto; padding:7px 14px; font-size:13px; font-weight:700; font-family:inherit; border:1px solid #E8751A; border-radius:6px; background:#E8751A; color:#fff; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:7px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+        Client Quotes
+      </button>
     </div>
     <div id="recent-wb-clients" class="recent-wb-strip"></div>
     <div class="clients-layout">
