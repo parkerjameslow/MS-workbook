@@ -14420,7 +14420,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Product Images gallery now renders the SAME unified pool as the Art
   // gallery (see _renderFileGallery), so a file added on either tab shows
   // on both. Kept as a named function since many callers reference it.
-  function renderImageGallery() { _renderFileGallery('imageGallery'); try { _updateMediaCollapseSummary(); } catch (_) {} }
+  function renderImageGallery() { _renderFileGallery('imageGallery'); try { _updateMediaCollapseSummary(); } catch (_) {} try { _updateSectionSummary('overview'); } catch (_) {} }
 
   // ── Product media collapsible (Images + Design File + Videos) ──────────
   // Collapsed by default; the header shows live counts so the operator knows
@@ -25516,6 +25516,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           if (client)  parts.push(`<span class="ss-value">${escHtml(client)}</span>`);
           if (product) parts.push(`<span class="ss-value ss-value--accent">${escHtml(product)}</span>`);
           if (desc)    parts.push(`<span class="ss-value ss-overview-desc" title="${escHtml(desc)}">${escHtml(desc)}</span>`);
+          // Image / file count — so the collapsed header tells you how many
+          // images are attached to this workbook at a glance.
+          let _ovImgs = 0;
+          try { _ovImgs = (typeof _unifiedWbFiles === 'function' ? _unifiedWbFiles() : []).length; } catch (_) {}
+          if (_ovImgs > 0) parts.push(`<span class="ss-value" style="color:var(--text-muted);">${_ovImgs} image${_ovImgs === 1 ? '' : 's'}</span>`);
           _setSectionSummary('overview',
             `<div class="ss-row">` + parts.join('<span class="ss-divider">·</span>') + `</div>`
           );
@@ -47477,8 +47482,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // ETA ("Shipment ETA", green) represents it instead.
   let _calYear = null, _calMonth = null, _calView = 'month';  // 'month' | 'timeline'
   let _calCenterTimeline = false, _calTimelineScrollLeft = 0, _calClientFilter = '';
+  // Status filter — active legend chips. Empty array = show everything. Each
+  // key is a status bucket: 'rough' | 'production' | 'in_transit' | 'shipment'.
+  let _calStatusFilter = [];
   function _calSetView(v) { _calView = (v === 'timeline') ? 'timeline' : 'month'; if (_calView === 'timeline') _calCenterTimeline = true; renderShipmentCalendar(); }
   function _calSetClient(v) { _calClientFilter = v || ''; _calCenterTimeline = true; renderShipmentCalendar(); }
+  // The status bucket an event belongs to — mirrors the legend colors.
+  function _calEventStatus(e) {
+    if (e && e.type === 'shipment') return (e.shipStatus === 'in_transit') ? 'in_transit' : 'shipment';
+    return (e && e.rough) ? 'rough' : 'production';
+  }
+  // Toggle a legend chip on/off. Multi-select: several can be active at once;
+  // empty means no filter (show all).
+  function _calToggleStatus(key) {
+    const i = _calStatusFilter.indexOf(key);
+    if (i === -1) _calStatusFilter.push(key); else _calStatusFilter.splice(i, 1);
+    renderShipmentCalendar();
+  }
+  function _calClearStatus() { _calStatusFilter = []; renderShipmentCalendar(); }
   function _calDayKey(d) {
     try { const x = (d instanceof Date) ? d : new Date(d); if (isNaN(x.getTime())) return null; return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
     catch (_) { return null; }
@@ -47635,10 +47656,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (_calYear == null) { _calYear = now.getFullYear(); _calMonth = now.getMonth(); }
     const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
     const byDay = {};
-    const allEvents = _collectCalendarEvents();
+    const allEventsRaw = _collectCalendarEvents();
+    // Client dropdown lists every client, regardless of the active status filter.
+    const clientsInView = Array.from(new Set(allEventsRaw.map(e => e.client).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    // Status filter from the legend chips (empty = show all).
+    const _passStatus = e => _calStatusFilter.length === 0 || _calStatusFilter.indexOf(_calEventStatus(e)) !== -1;
+    const allEvents = allEventsRaw.filter(_passStatus);
     allEvents.forEach(e => { (byDay[e.dateKey] = byDay[e.dateKey] || []).push(e); });
-    // Timeline client filter — distinct clients present, + the filtered set.
-    const clientsInView = Array.from(new Set(allEvents.map(e => e.client).filter(Boolean))).sort((a, b) => a.localeCompare(b));
     if (_calClientFilter && clientsInView.indexOf(_calClientFilter) === -1) _calClientFilter = '';
     const tlEvents = _calClientFilter ? allEvents.filter(e => e.client === _calClientFilter) : allEvents;
 
@@ -47710,11 +47734,23 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <option value="">All clients</option>
           ${clientsInView.map(c => `<option value="${esc(c)}"${c === _calClientFilter ? ' selected' : ''}>${esc(c)}</option>`).join('')}
         </select>`}
-        <div style="margin-left:auto; display:flex; gap:12px; align-items:center; font-size:11px; font-weight:700; flex-wrap:wrap;">
-          <span style="display:inline-flex; align-items:center; gap:5px; color:#E8751A;"><span style="width:10px; height:10px; border-radius:2px; background:#E8751A; display:inline-block;"></span>Order ETA (rough)</span>
-          <span style="display:inline-flex; align-items:center; gap:5px; color:#3b82f6;"><span style="width:10px; height:10px; border-radius:2px; background:#3b82f6; display:inline-block;"></span>Order ETA (production)</span>
-          <span style="display:inline-flex; align-items:center; gap:5px; color:#06b6d4;"><span style="width:10px; height:10px; border-radius:2px; background:#06b6d4; display:inline-block;"></span>In Transit → port</span>
-          <span style="display:inline-flex; align-items:center; gap:5px; color:#16a34a;"><span style="width:10px; height:10px; border-radius:2px; background:#16a34a; display:inline-block;"></span>Shipment ETA</span>
+        <div style="margin-left:auto; display:flex; gap:8px; align-items:center; font-size:11px; font-weight:700; flex-wrap:wrap;">
+          ${(() => {
+            const chip = (key, color, label) => {
+              const on = _calStatusFilter.indexOf(key) !== -1;
+              const dim = _calStatusFilter.length > 0 && !on;
+              return `<button type="button" onclick="_calToggleStatus('${key}')" title="Filter the calendar to ${label}"
+                style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; font-family:inherit; cursor:pointer; padding:4px 10px; border-radius:999px; border:1px solid ${color}${on ? '' : '66'}; background:${on ? color : 'transparent'}; color:${on ? '#fff' : color}; opacity:${dim ? '0.45' : '1'}; transition:all 0.12s;">
+                <span style="width:10px; height:10px; border-radius:2px; background:${on ? '#fff' : color}; display:inline-block;"></span>${label}</button>`;
+            };
+            return chip('rough', '#E8751A', 'Order ETA (rough)')
+                 + chip('production', '#3b82f6', 'Order ETA (production)')
+                 + chip('in_transit', '#06b6d4', 'In Transit → port')
+                 + chip('shipment', '#16a34a', 'Shipment ETA')
+                 + (_calStatusFilter.length > 0
+                    ? `<button type="button" onclick="_calClearStatus()" title="Show all statuses" style="font-size:11px; font-weight:700; font-family:inherit; cursor:pointer; padding:4px 10px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--text-muted);">✕ Clear</button>`
+                    : '');
+          })()}
         </div>
       </div>
       ${_calView === 'timeline' ? _calTimelineHtml(tlEvents, esc) : `
