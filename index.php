@@ -8710,6 +8710,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="hidden" id="color-notes" />
       </div>
 
+      <!-- Product media (Images + Design File + Videos) — collapsible box,
+           closed by default. The collapsed header shows live counts. -->
+      <div id="media-collapse" style="margin-top:4px; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden;">
+      <div onclick="toggleMediaCollapse()" style="display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; background:var(--surface2); user-select:none;">
+        <span style="font-size:13px; font-weight:700; color:var(--text);">Product Images, Design File &amp; Videos</span>
+        <span id="media-collapse-summary" style="font-size:11px; color:var(--text-muted);"></span>
+        <span id="media-collapse-chev" style="margin-left:auto; font-size:13px; color:var(--text-muted); transition:transform 0.15s; display:inline-block;">▸</span>
+      </div>
+      <div id="media-collapse-body" style="display:none; padding:14px; border-top:1px solid var(--border);">
+
       <!-- Product Images -->
       <div>
         <label style="display:block; margin-bottom:8px;">Product Images</label>
@@ -8746,6 +8756,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="video-gallery" id="videoGallery"></div>
         <input type="file" id="videoFileInput" accept="video/*,.mov,.m4v,.mkv" multiple onchange="handleVideoFiles(Array.from(this.files)); this.value='';" style="display:none;" />
       </div>
+
+      </div><!-- /#media-collapse-body -->
+      </div><!-- /#media-collapse -->
 
       <!-- Lightbox -->
       <div class="lightbox-overlay" id="lightboxOverlay" onclick="this.classList.remove('open')">
@@ -11655,14 +11668,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 0 10px;">
       <h1 style="font-size:18px; font-weight:700; color:var(--text); margin:0;">Clients</h1>
       <input type="text" id="clients-search" placeholder="Search clients…" oninput="renderClientsView()" autocomplete="off"
-        style="flex:0 1 240px; min-width:160px; padding:7px 10px; font-size:13px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none;" />
+        style="height:38px; box-sizing:border-box; flex:0 1 240px; min-width:160px; padding:7px 10px; font-size:13px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none;" />
       <!-- + Add Client — moved here from the left nav, sits beside the search. -->
       <button type="button" onclick="openAddClientModal()"
-        style="padding:7px 14px; font-size:13px; font-weight:700; font-family:inherit; border:1px solid var(--accent); border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; white-space:nowrap;">+ Add Client</button>
+        style="height:38px; box-sizing:border-box; padding:7px 14px; font-size:13px; font-weight:700; font-family:inherit; border:1px solid var(--accent); border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; white-space:nowrap;">+ Add Client</button>
       <!-- Client Quotes — sits right next to + Add Client, with a live badge
            of how many draft quotes are in the holding client. -->
       <button type="button" onclick="location.hash='#/quotes'" title="Open Client Quotes — draft workbooks for prospects"
-        style="padding:7px 14px; font-size:13px; font-weight:700; font-family:inherit; border:1px solid #E8751A; border-radius:6px; background:#E8751A; color:#fff; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:7px;">
+        style="height:38px; box-sizing:border-box; padding:7px 14px; font-size:13px; font-weight:700; font-family:inherit; border:1px solid #E8751A; border-radius:6px; background:#E8751A; color:#fff; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:7px;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
         Client Quotes
         <span id="clients-quotes-badge" style="display:none; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:rgba(255,255,255,0.28); color:#fff; font-size:11px; font-weight:800; line-height:1;">0</span>
@@ -14405,7 +14418,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Product Images gallery now renders the SAME unified pool as the Art
   // gallery (see _renderFileGallery), so a file added on either tab shows
   // on both. Kept as a named function since many callers reference it.
-  function renderImageGallery() { _renderFileGallery('imageGallery'); }
+  function renderImageGallery() { _renderFileGallery('imageGallery'); try { _updateMediaCollapseSummary(); } catch (_) {} }
+
+  // ── Product media collapsible (Images + Design File + Videos) ──────────
+  // Collapsed by default; the header shows live counts so the operator knows
+  // what's inside without opening it.
+  function toggleMediaCollapse(force) {
+    const body = document.getElementById('media-collapse-body');
+    const chev = document.getElementById('media-collapse-chev');
+    if (!body) return;
+    const open = (force === undefined) ? (body.style.display === 'none') : !!force;
+    body.style.display = open ? '' : 'none';
+    if (chev) chev.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
+  }
+  function _updateMediaCollapseSummary() {
+    const el = document.getElementById('media-collapse-summary');
+    if (!el) return;
+    let imgs = 0;
+    try { imgs = (typeof _unifiedWbFiles === 'function' ? _unifiedWbFiles() : []).length; } catch (_) {}
+    const hasDesign = !!(typeof _designFile !== 'undefined' && _designFile);
+    const vids = (typeof _productVideos !== 'undefined' && Array.isArray(_productVideos)) ? _productVideos.length : 0;
+    const parts = [];
+    parts.push(imgs === 1 ? '1 file' : imgs + ' files');
+    parts.push(hasDesign ? 'design file ✓' : 'no design file');
+    if (vids > 0) parts.push(vids === 1 ? '1 video' : vids + ' videos');
+    el.textContent = parts.join(' · ');
+  }
 
   // Refresh both galleries together — used after any add/remove so the two
   // tabs stay mirrored.
@@ -14814,6 +14852,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function renderVideoGallery() {
     const gallery = document.getElementById('videoGallery');
+    try { _updateMediaCollapseSummary(); } catch (_) {}
     gallery.querySelectorAll('.video-item').forEach(el => el.remove());
     _productVideos.forEach((url, idx) => {
       const info = getVideoInfo(url);
@@ -15137,6 +15176,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _designFileName = '';
   function renderDesignFile() {
     const slot = document.getElementById('design-file-slot');
+    try { _updateMediaCollapseSummary(); } catch (_) {}
     if (!slot) return;
     if (!_designFile) {
       slot.innerHTML = `<div class="design-file-drop" onclick="uploadDesignFile()" title="Upload a design / spec file">
