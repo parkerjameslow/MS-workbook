@@ -48012,6 +48012,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <span style="font-size:12px; color:var(--text-muted);" title="ETA / delivery date">${_esc(_recDateLabel(id))}</span>
         <span style="margin-left:auto; display:flex; gap:8px; align-items:center;" onclick="event.stopPropagation();">
           <a href="${carrierUrl}" target="_blank" rel="noopener" style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:var(--text); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);" title="Open carrier tracking page">${_esc(s.trackingNumber || '—')} ↗</a>
+          <button class="btn btn-ghost" style="font-size:12px;" onclick="event.stopPropagation(); location.hash='#/shipment/${id}'" title="Open this shipment's detail page — orders, workbooks, trackings &amp; costs">View Shipment →</button>
           <button class="btn btn-ghost" style="font-size:12px;" onclick="event.stopPropagation(); openReceivedModal('${id}','receiving')" title="Open the per-workbook receiving audit to confirm receipt.">Receiving</button>
         </span>
       </div>
