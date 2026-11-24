@@ -8608,69 +8608,67 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
     <div class="section-body">
 
-      <!-- Basic info grid -->
-      <div class="form-grid form-grid-2">
-        <div class="field">
-          <label>Client Name</label>
-          <!-- Dropdown of all clients. Changing the selection MOVES this
-               workbook to the selected client (after a confirmation
-               prompt). Populated by populateClientNameSelect() on
-               workbook open and after the client list is rebuilt. -->
-          <div class="select-wrapper">
-            <select id="client-name" onchange="onWorkbookClientChange(this)">
-              <option value="">Select a client…</option>
-            </select>
+      <!-- Basic info grid. Left column stacks Product Name → Client Name →
+           Product Description; the Technical Specifications box fills the
+           right and stretches (align-items:stretch) to the full height of
+           those three combined. The rich-text editor wraps #product-desc in
+           place (initRichEditors), so it works wherever the textarea lives. -->
+      <div class="form-grid form-grid-2" style="align-items:stretch;">
+        <!-- Left column -->
+        <div style="min-width:0; display:flex; flex-direction:column; gap:14px;">
+          <div class="field" style="margin:0;">
+            <label>Product Name</label>
+            <input type="text" placeholder="e.g. Custom Tote Bag" id="product-name" />
+          </div>
+          <div class="field" style="margin:0;">
+            <label>Client Name</label>
+            <!-- Dropdown of all clients. Changing the selection MOVES this
+                 workbook to the selected client (after a confirmation
+                 prompt). Populated by populateClientNameSelect() on
+                 workbook open and after the client list is rebuilt. -->
+            <div class="select-wrapper">
+              <select id="client-name" onchange="onWorkbookClientChange(this)">
+                <option value="">Select a client…</option>
+              </select>
+            </div>
+          </div>
+          <div class="field" style="margin:0; display:flex; flex-direction:column; flex:1 1 auto;">
+            <label>Product Description</label>
+            <textarea placeholder="Describe the product — intended use, key features, special requirements…" id="product-desc" data-rich="1"></textarea>
           </div>
         </div>
-        <div class="field">
-          <label>Product Name</label>
-          <input type="text" placeholder="e.g. Custom Tote Bag" id="product-name" />
-        </div>
-        <!-- Product Description (left) + Technical Specifications (right),
-             side by side. Each takes ~half the width. The rich-text editor
-             wraps #product-desc in place (initRichEditors), so it works
-             wherever the textarea lives. -->
-        <div class="field col-full">
-          <div class="wb-desc-specs form-grid form-grid-2" style="align-items:start;">
-            <!-- Left — Product Description (lines up with Client Name above) -->
-            <div style="min-width:0; display:flex; flex-direction:column;">
-              <label>Product Description</label>
-              <textarea placeholder="Describe the product — intended use, key features, special requirements…" id="product-desc" data-rich="1"></textarea>
-            </div>
-            <!-- Right — Technical Specifications (lines up with Product Name above) -->
-            <div style="min-width:0; display:flex; flex-direction:column;">
-              <label>Technical Specifications</label>
-              <div style="border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); padding:14px; display:flex; flex-direction:column; gap:14px; flex:1 1 auto;">
-                <div class="field" style="margin:0;">
-                  <label>Product Category</label>
-                  <div class="select-wrapper">
-                    <select id="product-category" onchange="updateSubcategories()">
-                      <option value="">Select category...</option>
-                      <option value="packaging">Packaging</option>
-                      <option value="apparel">Apparel</option>
-                      <option value="furniture">Furniture</option>
-                      <option value="electronics">Electronics</option>
-                      <option value="promotional">Promotional Products</option>
-                      <option value="food-beverage">Food & Beverage</option>
-                      <option value="toys">Toys & Games</option>
-                      <option value="beauty">Beauty & Personal Care</option>
-                      <option value="home-garden">Home & Garden</option>
-                      <option value="sports">Sports & Outdoors</option>
-                      <option value="stationery">Stationery & Office</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="field" style="margin:0;">
-                  <label>Material</label>
-                  <!-- Manual, free-text material. Replaces the old category-driven
-                       dropdown + "Other…" + secondary machinery. Feeds
-                       detail.productMaterial AND (for legacy readers / CSV
-                       export / history) detail.productSubcategory on save. -->
-                  <input type="text" id="product-material-manual" placeholder="e.g. Microfiber, 304 Stainless Steel…"
-                         oninput="_onManualMaterial()" style="width:100%; box-sizing:border-box;" />
-                </div>
+        <!-- Right column — Technical Specifications, full height of the left stack -->
+        <div style="min-width:0; display:flex; flex-direction:column;">
+          <label>Technical Specifications</label>
+          <div style="border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); padding:14px; display:flex; flex-direction:column; gap:14px; flex:1 1 auto;">
+            <div class="field" style="margin:0;">
+              <label>Product Category</label>
+              <div class="select-wrapper">
+                <select id="product-category" onchange="updateSubcategories()">
+                  <option value="">Select category...</option>
+                  <option value="packaging">Packaging</option>
+                  <option value="apparel">Apparel</option>
+                  <option value="furniture">Furniture</option>
+                  <option value="electronics">Electronics</option>
+                  <option value="promotional">Promotional Products</option>
+                  <option value="food-beverage">Food & Beverage</option>
+                  <option value="toys">Toys & Games</option>
+                  <option value="beauty">Beauty & Personal Care</option>
+                  <option value="home-garden">Home & Garden</option>
+                  <option value="sports">Sports & Outdoors</option>
+                  <option value="stationery">Stationery & Office</option>
+                  <option value="other">Other</option>
+                </select>
               </div>
+            </div>
+            <div class="field" style="margin:0;">
+              <label>Material</label>
+              <!-- Manual, free-text material. Replaces the old category-driven
+                   dropdown + "Other…" + secondary machinery. Feeds
+                   detail.productMaterial AND (for legacy readers / CSV
+                   export / history) detail.productSubcategory on save. -->
+              <input type="text" id="product-material-manual" placeholder="e.g. Microfiber, 304 Stainless Steel…"
+                     oninput="_onManualMaterial()" style="width:100%; box-sizing:border-box;" />
             </div>
           </div>
         </div>
@@ -11453,6 +11451,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div id="ship-detail-costs"></div>
         <!-- Split legs — portions of this shipment sent by a different method. -->
         <div id="ship-detail-splits"></div>
+        <!-- Free-text shipment notes — e.g. call out when a shipment has no
+             workbooks attached, special handling, who booked it. Saved to
+             s.notes (also feeds the shipment search). -->
+        <div style="margin-top:4px;">
+          <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:8px;">Notes</label>
+          <textarea id="ship-detail-notes" placeholder="Notes for this shipment — e.g. no workbooks attached yet, special handling, who booked it…"
+            oninput="onShipmentNotesChange()"
+            style="width:100%; min-height:80px; box-sizing:border-box; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; resize:vertical; outline:none;"></textarea>
+        </div>
       </div>
     </div>
 
@@ -11653,13 +11660,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- + Add Client — moved here from the left nav, sits beside the search. -->
       <button type="button" onclick="openAddClientModal()"
         style="padding:7px 14px; font-size:13px; font-weight:700; font-family:inherit; border:1px solid var(--accent); border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; white-space:nowrap;">+ Add Client</button>
-      <span id="clients-count-note" style="font-size:11px; color:var(--text-muted);"></span>
-      <!-- Client Quotes — moved here from the left nav; pinned to the right. -->
+      <!-- Client Quotes — sits right next to + Add Client, with a live badge
+           of how many draft quotes are in the holding client. -->
       <button type="button" onclick="location.hash='#/quotes'" title="Open Client Quotes — draft workbooks for prospects"
-        style="margin-left:auto; padding:7px 14px; font-size:13px; font-weight:700; font-family:inherit; border:1px solid #E8751A; border-radius:6px; background:#E8751A; color:#fff; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:7px;">
+        style="padding:7px 14px; font-size:13px; font-weight:700; font-family:inherit; border:1px solid #E8751A; border-radius:6px; background:#E8751A; color:#fff; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:7px;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
         Client Quotes
+        <span id="clients-quotes-badge" style="display:none; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:rgba(255,255,255,0.28); color:#fff; font-size:11px; font-weight:800; line-height:1;">0</span>
       </button>
+      <span id="clients-count-note" style="font-size:11px; color:var(--text-muted);"></span>
     </div>
     <div id="recent-wb-clients" class="recent-wb-strip"></div>
     <div class="clients-layout">
@@ -27201,6 +27210,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (link) link.classList.add('active');
     showView('view-clients');
     try { renderRecentWbStrip(); } catch (_) {}
+    // Client Quotes badge — count of draft workbooks in the holding client.
+    try {
+      const qn = (clientData['Client Quotes'] || []).length;
+      const badge = document.getElementById('clients-quotes-badge');
+      if (badge) { badge.textContent = qn; badge.style.display = qn > 0 ? 'inline-flex' : 'none'; }
+    } catch (_) {}
     const grid = document.getElementById('clients-grid');
     if (!grid) return;
     const q = (document.getElementById('clients-search')?.value || '').trim().toLowerCase();
@@ -45851,6 +45866,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     document.getElementById('ship-detail-etd').value       = s.etd || '';
     document.getElementById('ship-detail-eta').value       = s.eta || '';
     document.getElementById('ship-detail-delivered').value = s.deliveredOn || '';
+    const shNotesEl = document.getElementById('ship-detail-notes');
+    if (shNotesEl) shNotesEl.value = s.notes || '';
     document.getElementById('ship-delivered-wrap').style.display = s.status === 'delivered' ? 'flex' : 'none';
     // In Transit requires an ETD — red-flag it if missing so Karen fills it in.
     if (typeof _shipFlagEtdRequired === 'function') _shipFlagEtdRequired(s.status === 'in_transit' && !s.etd);
@@ -45981,6 +45998,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!s) return;
     s.shippingMethod = document.getElementById('ship-detail-method').value || '';
     _renderShipDetailPortDates(s.shippingMethod);
+    saveShipments();
+  }
+
+  // Free-text shipment notes (e.g. "no workbooks attached yet"). Saved on s.notes.
+  function onShipmentNotesChange() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.notes = (document.getElementById('ship-detail-notes') || {}).value || '';
     saveShipments();
   }
 
@@ -46267,7 +46292,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         return `
         <div style="display:grid; ${_trkCols} align-items:center;">
           <select onchange="updateShipmentTracking(${idx}, 'carrier', this.value); _renderShipmentDetailTrackings();"
-                  style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:7px 22px 7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; cursor:pointer; min-width:0;">
+                  style="height:42px; box-sizing:border-box; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:7px 22px 7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; cursor:pointer; min-width:0;">
             ${CARRIERS.map(c => `<option value="${c.v}"${c.v === (t.carrier || '') ? ' selected' : ''}>${c.lbl}</option>`).join('')}
           </select>
           <input type="text" value="${descEsc}" placeholder="Add a note (optional)"
@@ -46275,14 +46300,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                  onfocus="this.style.borderColor='var(--accent)';"
                  onblur="this.style.borderColor='var(--border)';"
                  title="Optional note for this tracking entry — e.g. which cartons, who booked it"
-                 style="min-width:0; padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; transition:border-color 0.15s;" />
+                 style="height:42px; box-sizing:border-box; min-width:0; padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; transition:border-color 0.15s;" />
           <input type="text" value="${numEsc}" placeholder="Tracking number"
                  data-tracking-idx="${idx}"
                  oninput="updateShipmentTracking(${idx}, 'number', this.value)"
                  onfocus="this.select(); this.style.borderColor='var(--accent)';"
                  onblur="this.style.borderColor='var(--border)'; _renderShipmentDetailTrackings();"
                  title="Click to edit. Tab away to save."
-                 style="min-width:0; padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:'SF Mono','Consolas',monospace; transition:border-color 0.15s;" />
+                 style="height:42px; box-sizing:border-box; min-width:0; padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:'SF Mono','Consolas',monospace; transition:border-color 0.15s;" />
           ${canOpen
             ? `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation();"
                   title="Open carrier tracking page in a new tab"
