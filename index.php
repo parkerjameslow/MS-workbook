@@ -6800,8 +6800,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-entity .pl-card-sub { color: #cbd5e1; }
     .pl-children { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; gap: 2px; }
     .pl-child-group { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; margin-top: 5px; }
-    .pl-child { font-size: 11px; color: #e5e7eb; padding: 3px 6px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
-    .pl-child:hover { background: rgba(255,255,255,0.07); }
+    .pl-child { font-size: 11px; color: #e5e7eb; padding: 4px 11px; border-radius: 999px; cursor: pointer; align-self: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); transition: background 0.12s; }
+    .pl-child:hover { background: rgba(255,255,255,0.14); }
     .pl-child-val { color: #a7f3d0; font-weight: 600; flex-shrink: 0; }
     /* Collapsible drill-down — children hidden until the toggle is clicked. */
     .pl-children { display: none; }
@@ -54319,10 +54319,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function _pipelineChildLine(w) {
     const href = `#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}`;
-    const spot = (typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + w.cn + '|' + w.wid, true) : '';
-    return `<div class="pl-child" onclick="event.stopPropagation(); location.hash='${href}'" title="Open ${_plEsc(w.product)}" style="display:flex; align-items:center; gap:8px;">
-      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:0 1 auto; min-width:0;">→ ${_plEsc(w.product)}</span>
-      <span style="flex:0 0 auto;">${spot}</span></div>`;
+    // A clickable bubble (no leading arrow, no per-line assignee spot —
+    // assigning is a card-level action only).
+    return `<div class="pl-child" onclick="event.stopPropagation(); location.hash='${href}'" title="Open ${_plEsc(w.product)}">${_plEsc(w.product)}</div>`;
   }
 
   // ── Pipeline card tracking pills ──────────────────────────────────────
