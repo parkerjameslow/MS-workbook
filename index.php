@@ -46385,6 +46385,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     saveShipments();
   }
 
+  // Operator override of the shipment's CBM (Container View). Empty / 0 reverts
+  // to the computed total. Persists on the shipment (s.cbmOverride).
+  function onShipmentCbmChange(val) {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    const n = parseFloat(val);
+    if (val === '' || val == null || isNaN(n) || n <= 0) { delete s.cbmOverride; }
+    else { s.cbmOverride = Math.round(n * 100) / 100; }
+    if (typeof saveShipments === 'function') saveShipments();
+    try { if (typeof renderShipmentContainerViz === 'function') renderShipmentContainerViz(); } catch (_) {}
+  }
+
   function onShipmentPortDateChange() {
     const s = shipmentData[_currentShipmentId];
     if (!s) return;
@@ -47353,6 +47365,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (empty) empty.style.display = 'none';
     body.style.display = '';
 
+    // Operator CBM override — when set on the shipment, scale the per-order
+    // volumes so the viz + summary total to the hand-entered figure.
+    const _cbmComputed = orders.reduce((a, x) => a + x.cbm, 0);
+    const _cbmOv = parseFloat(s.cbmOverride) || 0;
+    if (_cbmOv > 0 && _cbmComputed > 0) { const _sc = _cbmOv / _cbmComputed; orders.forEach(o => { o.cbm = o.cbm * _sc; }); }
     const totalCbm  = orders.reduce((a, x) => a + x.cbm, 0);
     const totalWtKg = orders.reduce((a, x) => a + (x.weightKg || 0), 0);
     const fmtCbm    = n => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -47392,9 +47409,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const wtCapTot  = _SHIP_CV_WT_CAP * containerCount;
       const wtOverAll = Math.max(0, totalWtKg - wtCapTot);
       const cnt       = containerCount > 1 ? ` · ${containerCount} containers` : '';
+      // Editable shipment CBM — defaults to the computed total; clearing reverts.
+      const cbmInput = `<input type="number" step="0.1" min="0" value="${totalCbm > 0 ? (Math.round(totalCbm * 10) / 10) : ''}" placeholder="${_cbmComputed > 0 ? (Math.round(_cbmComputed * 10) / 10) : '0'}" onclick="event.stopPropagation(); this.select();" onchange="onShipmentCbmChange(this.value)" title="Shipment CBM — editable. Defaults to the computed total (${fmtCbm(_cbmComputed)}); clear to revert." style="width:62px; text-align:right; padding:2px 6px; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); font-size:12px; font-weight:700; font-variant-numeric:tabular-nums;" />`;
+      const autoReset = _cbmOv > 0 ? ` <a href="javascript:void(0)" onclick="event.stopPropagation(); onShipmentCbmChange('')" style="color:var(--accent); font-size:11px; text-decoration:none;" title="Revert to the computed CBM (${fmtCbm(_cbmComputed)})">↺ auto</a>` : '';
       const cbmTxt = cbmOver > 0
-        ? `<span style="color:#d97706; font-weight:700;">${fmtCbm(totalCbm)} / ${fmtCbm(cbmCapTot)} m³ · over by ${fmtCbm(cbmOver)}</span>`
-        : `${fmtCbm(totalCbm)} / ${fmtCbm(cbmCapTot)} m³ · ${fmtCbm(cbmFree)} free`;
+        ? `${cbmInput} <span style="color:#d97706; font-weight:700;">/ ${fmtCbm(cbmCapTot)} m³ · over by ${fmtCbm(cbmOver)}</span>${autoReset}`
+        : `${cbmInput} / ${fmtCbm(cbmCapTot)} m³ · ${fmtCbm(cbmFree)} free${autoReset}`;
       const wtTxt = totalWtKg > 0
         ? (wtOverAll > 0
           ? ` · <span style="color:#d97706; font-weight:700;">${fmtKg(totalWtKg)} / ${fmtKg(wtCapTot)} kg · over by ${fmtKg(wtOverAll)}</span>`
