@@ -55240,36 +55240,56 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     });
     return { prodLead: maxProd, shipLead: maxShip };
   }
-  // Two stacked bars for an In-Production order card: a Production bar that
-  // fills from the day it entered Production over the production lead, then a
-  // Shipping bar (its own color) that fills once production finishes. Each tag
-  // shows the projected END date. '' when not applicable.
+  // Two stacked bars (Production then Shipping, different colors, each with an
+  // end date) for the cards that have a timeline:
+  //   • In-Production order → Production fills now, Shipping projected.
+  //   • Shipment → Production done (full), Shipping fills on ETD→ETA.
+  //   • Receiving (delivered) → both full.
+  // '' when there's nothing meaningful to show.
   function _plDualLeadBars(c) {
-    if (c.kind !== 'order' || c.stage !== 'production') return '';
-    const o = orderData[c.id] || {};
-    const startRaw = o.movedToProductionAt || o.notifiedAt;
-    if (!startRaw) return '';
-    const start = new Date(startRaw);
-    if (isNaN(start.getTime())) return '';
-    const leads = _orderProdShipLeads(o);
-    if (leads.prodLead <= 0 && leads.shipLead <= 0) return '';
     const now = Date.now();
     const fmt = d => (d && !isNaN(d.getTime())) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
     const clampPct = (a, b) => (b > a) ? Math.max(2, Math.min(100, Math.round(((now - a) / (b - a)) * 100))) : 100;
-    let rows = '', prodEnd = null;
-    if (leads.prodLead > 0) {
-      prodEnd = _addBusinessDays(start, leads.prodLead);
-      const pct = prodEnd ? clampPct(start.getTime(), prodEnd.getTime()) : 2;
-      rows += `<div class="pl-leadbar" title="Production: ${leads.prodLead} business days → done ~${fmt(prodEnd)}"><div class="pl-leadbar-track pl-leadbar-prod"><div class="pl-leadbar-fill" style="width:${pct}%;"></div></div><span class="pl-leadbar-tag">Prod ${fmt(prodEnd)}</span></div>`;
+    const bar = (cls, pct, tag, title) => `<div class="pl-leadbar" title="${title || ''}"><div class="pl-leadbar-track ${cls}"><div class="pl-leadbar-fill" style="width:${pct}%;"></div></div><span class="pl-leadbar-tag">${tag}</span></div>`;
+
+    if (c.kind === 'order' && c.stage === 'production') {
+      const o = orderData[c.id] || {};
+      const startRaw = o.movedToProductionAt || o.notifiedAt;
+      if (!startRaw) return '';
+      const start = new Date(startRaw);
+      if (isNaN(start.getTime())) return '';
+      const leads = _orderProdShipLeads(o);
+      if (leads.prodLead <= 0 && leads.shipLead <= 0) return '';
+      let rows = '', prodEnd = null;
+      if (leads.prodLead > 0) {
+        prodEnd = _addBusinessDays(start, leads.prodLead);
+        rows += bar('pl-leadbar-prod', prodEnd ? clampPct(start.getTime(), prodEnd.getTime()) : 2, 'Prod ' + fmt(prodEnd), `Production: ${leads.prodLead} business days → done ~${fmt(prodEnd)}`);
+      }
+      if (leads.shipLead > 0) {
+        const ss = prodEnd || start, se = _addBusinessDays(ss, leads.shipLead);
+        const started = ss && now >= ss.getTime();
+        rows += bar('pl-leadbar-ship', (se && started) ? clampPct(ss.getTime(), se.getTime()) : 0, 'Ship ' + fmt(se), `Shipping: ${leads.shipLead} business days after production → arrives ~${fmt(se)}`);
+      }
+      return rows ? `<div class="pl-dualbars">${rows}</div>` : '';
     }
-    if (leads.shipLead > 0) {
-      const shipStart = prodEnd || start;
-      const shipEnd = _addBusinessDays(shipStart, leads.shipLead);
-      const started = shipStart && now >= shipStart.getTime();
-      const pct = (shipEnd && started) ? clampPct(shipStart.getTime(), shipEnd.getTime()) : 0;
-      rows += `<div class="pl-leadbar" title="Shipping: ${leads.shipLead} business days after production → arrives ~${fmt(shipEnd)}"><div class="pl-leadbar-track pl-leadbar-ship"><div class="pl-leadbar-fill" style="width:${pct}%;"></div></div><span class="pl-leadbar-tag">Ship ${fmt(shipEnd)}</span></div>`;
+
+    if (c.kind === 'shipment') {
+      const s = shipmentData[c.id] || {};
+      const delivered = (s.status === 'delivered' || s.status === 'received');
+      // Production is complete once an order is on a shipment → full bar.
+      let rows = bar('pl-leadbar-prod', 100, 'Prod ✓', 'Production complete');
+      const etaRaw = s.eta || (s.tracking && s.tracking.eta) || '';
+      const etd = s.etd ? new Date(s.etd) : null;
+      const eta = etaRaw ? new Date(etaRaw) : null;
+      let shipPct, shipTag, shipTitle;
+      if (delivered) { shipPct = 100; shipTag = 'Ship ✓'; shipTitle = 'Delivered'; }
+      else if (etd && eta && !isNaN(etd.getTime()) && !isNaN(eta.getTime())) { shipPct = clampPct(etd.getTime(), eta.getTime()); shipTag = 'Ship ' + fmt(eta); shipTitle = `In transit — arrives ~${fmt(eta)}`; }
+      else if (eta && !isNaN(eta.getTime())) { shipPct = 2; shipTag = 'Ship ' + fmt(eta); shipTitle = `Arrives ~${fmt(eta)}`; }
+      else { shipPct = 2; shipTag = 'Ship —'; shipTitle = 'Shipping — add an ETA'; }
+      rows += bar('pl-leadbar-ship', shipPct, shipTag, shipTitle);
+      return `<div class="pl-dualbars">${rows}</div>`;
     }
-    return rows ? `<div class="pl-dualbars">${rows}</div>` : '';
+    return '';
   }
   // EXT = Order Profit (Total USD − Landed Cost), the same basis as the pricing
   // tab's "Order Profit" (ps-order-profit). Per workbook, from cached pricing.
