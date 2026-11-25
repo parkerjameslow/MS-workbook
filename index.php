@@ -6849,7 +6849,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     #view-pipeline .pl-card:not(.pl-card-karen):hover { border-color: #39455c; box-shadow: 0 5px 16px rgba(0,0,0,0.30); transform: translateY(-1px); }
     #view-pipeline .pl-card .pl-card-title { font-size: 14px; font-weight: 800; color: #f3f4f6; }
-    .pl-card.pl-entity .pl-card-title { white-space: normal; padding-right: 50px; margin-bottom: 9px; line-height: 1.25; }
+    .pl-card.pl-entity .pl-card-title, #view-pipeline .pl-wbcard .pl-card-title { white-space: normal; padding-right: 50px; margin-bottom: 9px; line-height: 1.25; }
     .pl-card.pl-entity .pl-stage-age { top: 11px; right: 11px; }
     /* identity row: client chip | workbook toggle */
     .pl-ident-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -55021,27 +55021,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (location.hash === '#/pipeline') renderPipelineBoard();
   }
 
-  // Workbook card (early stages).
+  // Workbook card (early stages) — client chip + inline total, no units, with
+  // the assign spot in the identity row (matches the entity cards).
   function _pipelineCardHtml(c) {
-    const units = (c.units > 0) ? `${c.units.toLocaleString('en-US')} units` : '';
     const val = (c.value > 0)
       ? `$${c.value.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '';
-    const sub = [_plEsc(c.clientName), units].filter(Boolean).join(' · ');
-    const wbHref = `#/client/${encodeURIComponent(c.clientName)}/workbook/${c.workbookId}`;
     const dragAttrs = c.movable
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'${_plEsc(c.key)}')" ondragend="onPipelineDragEnd(event)"`
       : '';
     const cid = _plCardId(c);
     const cidJs = _plEsc(cid).replace(/'/g, "\\'");
-    return `<div class="crm-card pl-card ${c.movable ? '' : 'pl-locked'}${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs}
+    const clientChip = _plClientChipHtml(c);
+    const identMid = val ? `<span class="pl-inline-total">${_plEsc(val)}</span>` : '';
+    const identSep = (clientChip && identMid) ? '<span class="pl-ident-sep"></span>' : '';
+    return `<div class="crm-card pl-card pl-wbcard ${c.movable ? '' : 'pl-locked'}${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs}
                  onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="View details — right-click for options">
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.product)}</div>
-      <div class="pl-card-sub">${sub}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
+      <div class="pl-ident-row">${clientChip}${identSep}${identMid}${_plCardAssignHtml(cid)}</div>
       ${_wbTrackingPillHtml(c.clientName, c.workbookId)}
       ${(typeof _sampleNotesWbBadge === 'function') ? _sampleNotesWbBadge(c) : ''}
-      ${_plEntityFooterHtml(cid)}
     </div>`;
   }
 
@@ -55089,6 +55089,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function _plEntityClients(c) {
     let list = Array.isArray(c.clients) ? c.clients.filter(Boolean) : [];
+    if (!list.length && c.clientName) list = [c.clientName];
     if (!list.length && c.sub) { const p = String(c.sub).split(' · ')[0].trim(); if (p) list = [p]; }
     return list;
   }
@@ -55137,9 +55138,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const clickAttr = canLaunch ? ` onclick="event.stopPropagation(); _openShipmentTracking('${_plEsc(String(s.id)).replace(/'/g, "\\'")}')" title="Open ${_plEsc(String(s.carrier || '').toUpperCase())} tracking"` : '';
     const clickCls = canLaunch ? ' pl-eta-click' : '';
     if (etd || eta) {
-      let transit = '';
-      if (s.etd && etaRaw) { const d1 = new Date(s.etd), d2 = new Date(etaRaw); if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) { const n = Math.round((d2 - d1) / 86400000); if (n > 0) transit = `${n}d transit`; } }
-      return `<div class="pl-etapill${clickCls}"${clickAttr}><span class="pl-eta-k">ETD</span><span class="pl-eta-d">${_plEsc(etd || '—')}</span><span class="pl-eta-bar"></span><span class="pl-eta-k">ETA</span><span class="pl-eta-d">${_plEsc(eta || '—')}</span>${transit ? `<span class="pl-eta-t">${_plEsc(transit)}</span>` : ''}</div>`;
+      return `<div class="pl-etapill${clickCls}"${clickAttr}><span class="pl-eta-k">ETD</span><span class="pl-eta-d">${_plEsc(etd || '—')}</span><span class="pl-eta-bar"></span><span class="pl-eta-k">ETA</span><span class="pl-eta-d">${_plEsc(eta || '—')}</span></div>`;
     }
     // Fallback: carrier · status, same pill shape.
     const carr = s.carrier ? ((typeof _carrierLabel === 'function') ? _carrierLabel(s.carrier) : String(s.carrier).toUpperCase()) : '';
