@@ -6836,66 +6836,81 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-radius: 99px; background: rgba(239,68,68,0.20); color: #fca5a5;
       border: 1px solid rgba(252,165,165,0.35);
     }
-    /* ── Modern entity (order / shipment) pipeline cards ──────────────────
-       Scoped to .pl-card.pl-entity (higher specificity than .crm-card) so the
-       CRM board + workbook cards are untouched. */
-    .pl-card.pl-entity:not(.pl-card-karen) {
-      background: #161b24; border: 1px solid #262e3b; border-radius: 16px;
-      padding: 16px 16px 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.28);
+    /* ── Modern pipeline cards ───────────────────────────────────────────
+       ONE shared container for every pipeline card (#view-pipeline .pl-card
+       beats .crm-card on specificity) so workbook + order + shipment cards all
+       match; the richer order/shipment chrome is scoped to .pl-entity. */
+    #view-pipeline .pl-card:not(.pl-card-karen) {
+      background: #161b24; border: 1px solid #262e3b; border-radius: 12px;
+      padding: 12px 13px; box-shadow: 0 1px 6px rgba(0,0,0,0.22);
     }
-    .pl-card.pl-entity:not(.pl-card-karen):hover { border-color: #3a475f; box-shadow: 0 8px 22px rgba(0,0,0,0.34); transform: translateY(-1px); }
-    .pl-card.pl-entity .pl-card-title { font-size: 16px; font-weight: 800; color: #f3f4f6; letter-spacing: -0.01em; white-space: normal; padding-right: 56px; margin-bottom: 11px; line-height: 1.25; }
-    .pl-card.pl-entity .pl-stage-age { top: 13px; right: 13px; font-size: 10px; padding: 3px 9px; }
-    .pl-card.pl-entity .pl-card-menu-btn { top: 11px; }
+    #view-pipeline .pl-card:not(.pl-card-karen):hover { border-color: #39455c; box-shadow: 0 5px 16px rgba(0,0,0,0.30); transform: translateY(-1px); }
+    #view-pipeline .pl-card .pl-card-title { font-size: 14px; font-weight: 800; color: #f3f4f6; }
+    .pl-card.pl-entity .pl-card-title { white-space: normal; padding-right: 50px; margin-bottom: 9px; line-height: 1.25; }
+    .pl-card.pl-entity .pl-stage-age { top: 11px; right: 11px; }
     /* identity row: client chip | workbook toggle */
-    .pl-ident-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 13px; }
-    .pl-client-chip { display: inline-flex; align-items: center; gap: 7px; padding: 3px 12px 3px 3px; border-radius: 999px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); font-size: 12px; font-weight: 600; color: #e5e7eb; max-width: 100%; overflow: hidden; }
-    .pl-client-ava { width: 23px; height: 23px; border-radius: 50%; background: #3a4a63; color: #e2e8f0; font-size: 10px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-    .pl-client-more { font-size: 11px; color: #94a3b8; font-weight: 700; }
-    .pl-ident-sep { width: 1px; align-self: stretch; min-height: 20px; background: rgba(255,255,255,0.13); }
-    .pl-wb-toggle { display: inline-flex; align-items: center; gap: 7px; padding: 5px 13px; border-radius: 999px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); color: #cbd5e1; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; text-align: left; line-height: 1.35; max-width: 100%; transition: background .12s; }
+    .pl-ident-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .pl-client-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 2px; border-radius: 999px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); font-size: 11px; font-weight: 600; color: #e5e7eb; max-width: 100%; overflow: hidden; }
+    .pl-client-ava { width: 19px; height: 19px; border-radius: 50%; background: #3a4a63; color: #e2e8f0; font-size: 9px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+    .pl-client-more { font-size: 10px; color: #94a3b8; font-weight: 700; }
+    .pl-ident-sep { width: 1px; align-self: stretch; min-height: 16px; background: rgba(255,255,255,0.13); }
+    .pl-wb-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); color: #cbd5e1; font-size: 11px; font-weight: 600; font-family: inherit; cursor: pointer; text-align: left; line-height: 1.3; max-width: 100%; transition: background .12s; }
     .pl-wb-toggle:hover { background: rgba(255,255,255,0.11); }
-    .pl-wb-chev { font-size: 11px; opacity: 0.7; transition: transform .15s; flex: 0 0 auto; }
+    .pl-wb-chev { font-size: 10px; opacity: 0.7; transition: transform .15s; flex: 0 0 auto; }
     .pl-card.pl-open .pl-wb-chev { transform: rotate(180deg); }
-    /* total row */
-    .pl-total-row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
-    .pl-total-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #6b7280; }
-    .pl-total-val { font-size: 22px; font-weight: 800; color: #34d399; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
-    /* inset panel (ETA strip, Task status) */
-    .pl-panel { background: #1b2230; border: 1px solid #272f3d; border-radius: 12px; padding: 13px 14px; margin-bottom: 10px; }
-    .pl-panel-lbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: #6b7280; margin-bottom: 8px; }
-    .pl-eta-strip { display: flex; align-items: center; gap: 8px; }
-    .pl-eta-col { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+    /* total row (+ optional EXT) */
+    .pl-total-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 11px; flex-wrap: wrap; }
+    .pl-total-lbl, .pl-ext-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; }
+    .pl-total-val { font-size: 19px; font-weight: 800; color: #34d399; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
+    .pl-total-sep { width: 1px; align-self: stretch; min-height: 16px; background: rgba(255,255,255,0.12); }
+    .pl-ext-val { font-size: 13px; font-weight: 700; color: #cbd5e1; }
+    /* inset panels (ETA strip, Task status, Workbooks) */
+    .pl-panel { background: #1b2230; border: 1px solid #272f3d; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+    .pl-panel-lbl { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; margin-bottom: 7px; }
+    /* expanded "workbooks in this job" panel */
+    .pl-entity .pl-wb-panel { display: none; }
+    .pl-card.pl-open .pl-wb-panel { display: block; }
+    .pl-wb-grp { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #7f8ea3; margin: 9px 0 3px; }
+    .pl-wb-grp:first-child { margin-top: 0; }
+    .pl-wb-row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-radius: 8px; cursor: pointer; transition: background .12s; }
+    .pl-wb-row:hover { background: rgba(255,255,255,0.05); }
+    .pl-wb-ic { width: 26px; height: 26px; border-radius: 7px; background: rgba(107,147,255,0.14); color: #93b0ff; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+    .pl-wb-ic svg { width: 14px; height: 14px; }
+    .pl-wb-name { flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 600; color: #e5e7eb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pl-wb-caret { color: #64748b; font-size: 15px; flex: 0 0 auto; }
+    /* eta strip */
+    .pl-eta-strip { display: flex; align-items: center; gap: 7px; }
+    .pl-eta-col { display: flex; flex-direction: column; gap: 3px; flex: 0 0 auto; }
     .pl-eta-col.pl-eta-right { text-align: right; margin-left: auto; align-items: flex-end; }
-    .pl-eta-lbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; }
-    .pl-eta-date { font-size: 15px; font-weight: 800; color: #e5e7eb; display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
-    .pl-eta-dash { flex: 1 1 auto; border-top: 1px dashed rgba(148,163,184,0.35); min-width: 12px; height: 0; }
-    .pl-eta-mid { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 13px; border-radius: 999px; flex: 0 0 auto; border: 1px solid transparent; }
-    .pl-eta-status { font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; }
-    .pl-eta-sub { font-size: 10px; opacity: 0.85; font-weight: 600; }
+    .pl-eta-lbl { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; }
+    .pl-eta-date { font-size: 14px; font-weight: 800; color: #e5e7eb; display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+    .pl-eta-dash { flex: 1 1 auto; border-top: 1px dashed rgba(148,163,184,0.35); min-width: 10px; height: 0; }
+    .pl-eta-mid { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 11px; border-radius: 999px; flex: 0 0 auto; border: 1px solid transparent; }
+    .pl-eta-status { font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; gap: 5px; }
+    .pl-eta-sub { font-size: 9px; opacity: 0.9; font-weight: 600; }
     .pl-eta-mid.pl-track-pending { background: rgba(148,163,184,0.16); border-color: rgba(148,163,184,0.28); color: #cbd5e1; }
     .pl-eta-mid.pl-track-in_transit { background: rgba(107,147,255,0.16); border-color: rgba(107,147,255,0.32); color: #bfdbfe; }
     .pl-eta-mid.pl-track-delivered { background: rgba(22,163,74,0.18); border-color: rgba(22,163,74,0.36); color: #86efac; }
     /* Task status panel line */
-    .pl-task-line { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; cursor: pointer; }
+    .pl-task-line { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; cursor: pointer; }
     .pl-task-line .pl-task-dot { width: 9px; height: 9px; border-radius: 50%; }
     .pl-task-line.pl-task-pending { color: #fbbf24; }
     .pl-task-line.pl-task-pending .pl-task-dot { background: #f59e0b; }
     .pl-task-line.pl-task-done { color: #34d399; }
     .pl-task-line.pl-task-done .pl-task-dot { background: #16a34a; }
     .pl-task-panel { cursor: pointer; transition: border-color .12s; }
-    .pl-task-panel:hover { border-color: #3a475f; }
-    /* footer */
-    .pl-card.pl-entity .pl-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 13px; padding-top: 13px; border-top: 1px solid rgba(255,255,255,0.07); cursor: pointer; }
+    .pl-task-panel:hover { border-color: #39455c; }
+    /* footer — shared by ALL pipeline cards so they match */
+    #view-pipeline .pl-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.07); cursor: pointer; }
     .pl-foot-left { display: inline-flex; align-items: center; gap: 6px; }
-    .pl-foot-unassigned { font-size: 12px; color: #6b7280; }
+    .pl-foot-unassigned { font-size: 11px; color: #6b7280; }
     .pl-foot-avatars { display: inline-flex; align-items: center; }
-    .pl-assign-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 15px; border-radius: 999px; border: 1px dashed rgba(255,255,255,0.22); color: #9ca3af; font-size: 12px; font-weight: 700; white-space: nowrap; transition: color .12s, border-color .12s; }
+    .pl-assign-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 13px; border-radius: 999px; border: 1px dashed rgba(255,255,255,0.22); color: #9ca3af; font-size: 11px; font-weight: 700; white-space: nowrap; transition: color .12s, border-color .12s; }
     .pl-foot:hover .pl-assign-btn { border-color: var(--accent); color: var(--accent); }
-    /* Karen (light) entity card — keep panels + chips readable */
+    /* Karen (light) card — keep panels + chips readable */
     .pl-card-karen .pl-panel { background: rgba(0,0,0,0.05); border-color: rgba(124,45,18,0.20); }
     .pl-card-karen .pl-client-chip, .pl-card-karen .pl-wb-toggle { background: rgba(124,45,18,0.08); border-color: rgba(124,45,18,0.22); color: #7c2d12; }
-    .pl-card-karen .pl-eta-date, .pl-card-karen .pl-total-lbl, .pl-card-karen .pl-panel-lbl, .pl-card-karen .pl-eta-lbl, .pl-card-karen .pl-foot-unassigned { color: #7c2d12 !important; }
+    .pl-card-karen .pl-eta-date, .pl-card-karen .pl-total-lbl, .pl-card-karen .pl-panel-lbl, .pl-card-karen .pl-eta-lbl, .pl-card-karen .pl-ext-lbl, .pl-card-karen .pl-foot-unassigned, .pl-card-karen .pl-wb-name { color: #7c2d12 !important; }
     .pl-card-karen .pl-total-val { color: #166534; }
     .pl-card-karen .pl-foot { border-top-color: rgba(124,45,18,0.18); }
     /* ── Shipping Calendar ─────────────────────────────────────────────── */
@@ -54942,8 +54957,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <div class="pl-card-title">${_plEsc(c.product)}</div>
       <div class="pl-card-sub">${sub}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
       ${_wbTrackingPillHtml(c.clientName, c.workbookId)}
-      ${_plAssigneeChips(cid)}
       ${(typeof _sampleNotesWbBadge === 'function') ? _sampleNotesWbBadge(c) : ''}
+      ${_plEntityFooterHtml(cid)}
     </div>`;
   }
 
@@ -55007,9 +55022,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const sep = (clientChip && wbToggle) ? '<span class="pl-ident-sep"></span>' : '';
     return `<div class="pl-ident-row">${clientChip}${sep}${wbToggle}</div>`;
   }
-  function _plTotalRowHtml(valStr) {
-    if (!valStr) return '';
-    return `<div class="pl-total-row"><span class="pl-total-lbl">Total</span><span class="pl-total-val">${_plEsc(valStr)}</span></div>`;
+  function _plTotalRowHtml(valStr, extStr) {
+    if (!valStr && !extStr) return '';
+    const total = valStr ? `<span class="pl-total-lbl">Total</span><span class="pl-total-val">${_plEsc(valStr)}</span>` : '';
+    const ext = extStr ? `${valStr ? '<span class="pl-total-sep"></span>' : ''}<span class="pl-ext-lbl">Ext</span><span class="pl-ext-val">${_plEsc(extStr)}</span>` : '';
+    return `<div class="pl-total-row">${total}${ext}</div>`;
+  }
+  // A workbook row inside the expanded "Workbooks in this job" panel.
+  function _plEntityChildRow(w) {
+    const href = `#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}`;
+    const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>';
+    return `<div class="pl-wb-row" onclick="event.stopPropagation(); location.hash='${href}'" title="Open ${_plEsc(w.product)}"><span class="pl-wb-ic">${icon}</span><span class="pl-wb-name">${_plEsc(w.product)}</span><span class="pl-wb-caret">›</span></div>`;
   }
   function _plEntityUsd(n) {
     return (Number(n) > 0) ? '$' + (Number(n)).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : '';
@@ -55038,11 +55061,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       lbl = (typeof _SHIP_STATUS_LABEL === 'function') ? _SHIP_STATUS_LABEL(s.status) : (s.status || '');
     }
     if (!etd && !eta && !lbl) return '';
-    let sub = '';
+    // Sub line under the status: carrier · N days (e.g. "UPS · 10 days").
+    const subParts = [];
+    if (s.carrier) subParts.push((typeof _carrierLabel === 'function') ? _carrierLabel(s.carrier) : String(s.carrier).toUpperCase());
     if (s.etd && etaRaw) {
       const d1 = new Date(s.etd), d2 = new Date(etaRaw);
-      if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) { const days = Math.round((d2 - d1) / 86400000); if (days > 0) sub = `${days} day${days === 1 ? '' : 's'}`; }
+      if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) { const days = Math.round((d2 - d1) / 86400000); if (days > 0) subParts.push(`${days} day${days === 1 ? '' : 's'}`); }
     }
+    const sub = subParts.join(' · ');
     const dotCol = ({ pending: '#94a3b8', in_transit: '#6b93ff', delivered: '#22c55e' })[key] || '#94a3b8';
     const canLaunch = !!_carrierTrackingUrl(s.carrier, s.trackingNumber);
     const midAttr = canLaunch
@@ -55092,7 +55118,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _pipelineOrderCardHtml(c) {
     const val = c.totalUsd > 0 ? `$${c.totalUsd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '';
     const wbs = c.workbooks || [];
-    const children = wbs.map(_pipelineChildLine).join('');
+    const o = orderData[c.id] || {};
+    const ext = (o.poNumber || '').trim();
+    const childRows = wbs.map(_plEntityChildRow).join('');
     const cid = _plCardId(c);
     // Order cards can be dragged between Orders and In Production (the two
     // order lanes); the drop is wired to the real order move in onPipelineDrop.
@@ -55102,18 +55130,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       : '';
     const cidJs = _plEsc(cid).replace(/'/g, "\\'");
     const clientChip = _plClientChipHtml(c);
-    const wbToggle = children ? _plWbToggleHtml(_wbClientBreakdown(wbs, wbs.length)) : '';
+    const wbToggle = childRows ? _plWbToggleHtml(_wbClientBreakdown(wbs, wbs.length)) : '';
     return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDrag ? 'Drag between lanes, click to view, right-click for options' : 'View details — right-click for options'}">
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       ${_plIdentRowHtml(clientChip, wbToggle)}
-      ${_plTotalRowHtml(val)}
+      ${_plTotalRowHtml(val, ext)}
       ${_entityIsDone('order', c.id) ? _doneBadgeHtml(orderData[c.id]) : ''}
+      ${childRows ? `<div class="pl-panel pl-wb-panel"><div class="pl-panel-lbl">Workbooks in this job</div>${childRows}</div>` : ''}
       ${_plProdEtaStripHtml(c)}
       ${_plTaskPanelHtml(c)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
-      ${children ? `<div class="pl-children">${children}</div>` : ''}
       ${_plEntityFooterHtml(cid)}
     </div>`;
   }
@@ -55149,11 +55177,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   function _pipelineShipmentCardHtml(c) {
-    const body = (c.groups || []).map(g =>
-      `<div class="pl-child-group">${_plEsc(g.label)}</div>${g.workbooks.map(_pipelineChildLine).join('')}`
-    ).join('');
+    const groups = c.groups || [];
+    const hasBody = groups.some(g => (g.workbooks || []).length);
+    const wbPanel = (groups.length > 1)
+      ? groups.map(g => `<div class="pl-wb-grp">${_plEsc(g.label)}</div>${(g.workbooks || []).map(_plEntityChildRow).join('')}`).join('')
+      : groups.map(g => (g.workbooks || []).map(_plEntityChildRow).join('')).join('');
     const cid = _plCardId(c);
     const cidJs = _plEsc(cid).replace(/'/g, "\\'");
+    // EXT — the PO number of the first order on this shipment, when present.
+    const s = shipmentData[c.id] || {};
+    let ext = '';
+    (s.entries || []).some(e => { if (e && e.orderId && orderData[e.orderId] && (orderData[e.orderId].poNumber || '').trim()) { ext = orderData[e.orderId].poNumber.trim(); return true; } return false; });
     // Shipments cards can be dragged → Receiving (marks the shipment Delivered,
     // routed through the same transition as the Move menu). Receiving-stage
     // shipment cards stay locked.
@@ -55162,20 +55196,20 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'shipment:${c.id}')" ondragend="onPipelineDragEnd(event)"`
       : '';
     const clientChip = _plClientChipHtml(c);
-    const wbToggle = body ? _plWbToggleHtml(_shipmentWbBreakdown(c)) : '';
+    const wbToggle = hasBody ? _plWbToggleHtml(_shipmentWbBreakdown(c)) : '';
     const val = _plEntityUsd(c.value);
-    const etaStrip = _shipmentEtaStripHtml(shipmentData[c.id]) || `<div class="pl-panel"><div class="pl-panel-lbl">Status</div>${_shipmentStatusPillHtml(c.id)}</div>`;
+    const etaStrip = _shipmentEtaStripHtml(s) || `<div class="pl-panel"><div class="pl-panel-lbl">Status</div>${_shipmentStatusPillHtml(c.id)}</div>`;
     return `<div class="crm-card pl-card ${canDragShip ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDragShip ? 'Drag to Receiving to mark Delivered, click to view, right-click for options' : 'View details — right-click for options'}">
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       ${_plIdentRowHtml(clientChip, wbToggle)}
-      ${_plTotalRowHtml(val)}
+      ${_plTotalRowHtml(val, ext)}
       ${_entityIsDone('shipment', c.id) ? _doneBadgeHtml(shipmentData[c.id]) : ''}
+      ${wbPanel ? `<div class="pl-panel pl-wb-panel"><div class="pl-panel-lbl">Workbooks in this job</div>${wbPanel}</div>` : ''}
       ${etaStrip}
       ${_plTaskPanelHtml(c)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
-      ${body ? `<div class="pl-children">${body}</div>` : ''}
       ${_plEntityFooterHtml(cid)}
     </div>`;
   }
