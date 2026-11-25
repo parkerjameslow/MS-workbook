@@ -6892,6 +6892,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-eta-mid.pl-track-pending { background: rgba(148,163,184,0.16); border-color: rgba(148,163,184,0.28); color: #cbd5e1; }
     .pl-eta-mid.pl-track-in_transit { background: rgba(107,147,255,0.16); border-color: rgba(107,147,255,0.32); color: #bfdbfe; }
     .pl-eta-mid.pl-track-delivered { background: rgba(22,163,74,0.18); border-color: rgba(22,163,74,0.36); color: #86efac; }
+    /* Compact Production ETA pill (order cards) — one line, near the top. */
+    .pl-prodeta { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 10px; padding: 4px 11px; border-radius: 999px; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.28); max-width: 100%; }
+    .pl-prodeta-lbl { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #93b0ff; }
+    .pl-prodeta-date { font-size: 12px; font-weight: 800; color: #dbe6ff; font-variant-numeric: tabular-nums; }
+    .pl-prodeta-lead { font-size: 10px; font-weight: 600; color: #93b0ff; opacity: 0.9; }
     /* Task status panel line */
     .pl-task-line { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; cursor: pointer; }
     .pl-task-line .pl-task-dot { width: 9px; height: 9px; border-radius: 50%; }
@@ -55083,16 +55088,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <div class="pl-eta-col pl-eta-right"><span class="pl-eta-lbl">ETA</span><span class="pl-eta-date">📍 ${_plEsc(eta || '—')}</span></div>
     </div></div>`;
   }
-  // Production-ETA strip for an In-Production order card (same panel aesthetic).
+  // Compact Production-ETA pill for an In-Production order card — one line, sits
+  // near the top so the card stays short.
   function _plProdEtaStripHtml(c) {
     if (c.stage !== 'production') return '';
     const eta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(orderData[c.id]) : null;
     if (!eta) return '';
-    return `<div class="pl-panel"><div class="pl-eta-strip">
-      <div class="pl-eta-col"><span class="pl-eta-lbl">Production ETA</span><span class="pl-eta-date">📅 ${_plEsc(eta.dateFmt)}</span></div>
-      <span class="pl-eta-dash"></span>
-      <div class="pl-eta-mid pl-track-in_transit" style="cursor:default;" title="${eta.leadDays} business-day lead from the day it entered Production"><span class="pl-eta-status">${eta.leadDays} day lead</span></div>
-    </div></div>`;
+    return `<div class="pl-prodeta" title="Production ETA — ${eta.leadDays} business-day lead from the day it entered Production"><span class="pl-prodeta-lbl">Production ETA</span><span class="pl-prodeta-date">${_plEsc(eta.dateFmt)}</span><span class="pl-prodeta-lead">${eta.leadDays}d lead</span></div>`;
   }
   // Footer: assignees (or "Unassigned") on the left, "+ Assign" on the right.
   function _plEntityFooterHtml(cid) {
@@ -55137,10 +55139,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       ${_plIdentRowHtml(clientChip, wbToggle, _cardTaskPillHtml(c))}
+      ${_plProdEtaStripHtml(c)}
       ${_plTotalRowHtml(val, ext)}
       ${_entityIsDone('order', c.id) ? _doneBadgeHtml(orderData[c.id]) : ''}
       ${childRows ? `<div class="pl-panel pl-wb-panel"><div class="pl-panel-lbl">Workbooks in this job</div>${childRows}</div>` : ''}
-      ${_plProdEtaStripHtml(c)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${_plEntityFooterHtml(cid)}
     </div>`;
