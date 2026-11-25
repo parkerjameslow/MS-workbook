@@ -54978,7 +54978,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     ).join('');
     const cid = _plCardId(c);
     const cidJs = _plEsc(cid).replace(/'/g, "\\'");
-    return `<div class="crm-card pl-card pl-locked pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="View details — right-click for options">
+    // Shipments cards can be dragged → Receiving (marks the shipment Delivered,
+    // routed through the same transition as the Move menu). Receiving-stage
+    // shipment cards stay locked.
+    const canDragShip = (c.stage === 'shipments');
+    const dragAttrs = canDragShip
+      ? `draggable="true" ondragstart="onPipelineDragStart(event,'shipment:${c.id}')" ondragend="onPipelineDragEnd(event)"`
+      : '';
+    return `<div class="crm-card pl-card ${canDragShip ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDragShip ? 'Drag to Receiving to mark Delivered, click to view, right-click for options' : 'View details — right-click for options'}">
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
@@ -55012,8 +55019,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!key) return;
     // Order entity cards move between Orders and In Production only.
     if (String(key).indexOf('order:') === 0) { _pipelineMoveOrder(String(key).slice(6), targetCol); return; }
+    // Shipment entity cards move Shipments → Receiving (= mark Delivered).
+    if (String(key).indexOf('shipment:') === 0) { _pipelineMoveShipment(String(key).slice(9), targetCol); return; }
     const [clientName, workbookId] = key.split('|');
     _pipelineMoveWorkbook(clientName, workbookId, targetCol);
+  }
+
+  // Drag a Shipments-stage card → Receiving. Marks the shipment Delivered via
+  // the same handler the Move menu uses (onShipmentCardStatusChange), so the
+  // carrier+tracking guard, delivered notification and nav all behave the same.
+  function _pipelineMoveShipment(shipmentId, targetCol) {
+    const s = shipmentData[shipmentId];
+    if (!s) return;
+    if (targetCol === 'shipments') return;              // dropped back where it is
+    if (targetCol === 'receiving') {
+      if (typeof onShipmentCardStatusChange === 'function') onShipmentCardStatusChange(shipmentId, 'delivered');
+      return;
+    }
+    showToast('A shipment only moves forward to Receiving (mark it Delivered). Other columns are managed from their own views.', 'warn');
   }
 
   // Shared "move a workbook to a pipeline column" routine — used by the board
