@@ -6862,7 +6862,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* total row (+ optional EXT) */
     .pl-total-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; flex-wrap: wrap; }
     .pl-total-lbl, .pl-ext-lbl { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; }
-    .pl-total-val { font-size: 13px; font-weight: 800; color: #34d399; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+    .pl-total-val { font-size: 12px; font-weight: 800; color: #34d399; letter-spacing: 0; font-variant-numeric: tabular-nums; }
     .pl-total-sep { width: 1px; align-self: stretch; min-height: 13px; background: rgba(255,255,255,0.12); }
     .pl-ext-val { font-size: 12px; font-weight: 700; color: #cbd5e1; }
     /* inset panels (ETA strip, Task status, Workbooks) */
@@ -6897,6 +6897,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-prodeta-lbl { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #93b0ff; }
     .pl-prodeta-date { font-size: 12px; font-weight: 800; color: #dbe6ff; font-variant-numeric: tabular-nums; }
     .pl-prodeta-lead { font-size: 10px; font-weight: 600; color: #93b0ff; opacity: 0.9; }
+    /* Final card layout bits — title separator, inline total, bottom ETA + task row. */
+    .pl-card.pl-entity .pl-title-sep { height: 1px; background: rgba(255,255,255,0.08); margin: 11px -13px 12px; }
+    .pl-ident-assign { margin-left: auto; display: inline-flex; align-items: center; cursor: pointer; flex: 0 0 auto; }
+    .pl-ident-assign .pl-avatar { width: 22px; height: 22px; font-size: 10px; }
+    .pl-assign-plus { width: 24px; height: 24px; border-radius: 50%; border: 1.5px dashed rgba(255,255,255,0.22); color: #9ca3af; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; margin-left: 5px; flex: 0 0 auto; transition: color .12s, border-color .12s; }
+    .pl-ident-assign:hover .pl-assign-plus { border-color: var(--accent); color: var(--accent); }
+    .pl-inline-total { font-size: 14px; font-weight: 800; color: #34d399; font-variant-numeric: tabular-nums; }
+    .pl-ext-inline { font-size: 11px; font-weight: 700; color: #6b7280; margin-left: 5px; }
+    .pl-entity .pl-expand { display: none; }
+    .pl-card.pl-open .pl-expand { display: block; }
+    .pl-botrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+    .pl-botrow .pl-task-pill { margin-left: auto; }
+    .pl-etapill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; background: #1b2230; border: 1px solid #2a3342; max-width: 100%; cursor: default; }
+    .pl-etapill.pl-eta-click { cursor: pointer; }
+    .pl-etapill.pl-eta-click:hover { border-color: #3a475f; }
+    .pl-etapill .pl-eta-k { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; }
+    .pl-etapill .pl-eta-d { font-size: 12px; font-weight: 800; color: #e5e7eb; font-variant-numeric: tabular-nums; }
+    .pl-etapill .pl-eta-bar { width: 1px; height: 13px; background: rgba(255,255,255,0.14); }
+    .pl-etapill .pl-eta-t { font-size: 11px; font-weight: 700; color: #6b93ff; }
+    .pl-card-karen .pl-inline-total { color: #166534; }
+    .pl-card-karen .pl-etapill { background: rgba(0,0,0,0.05); border-color: rgba(124,45,18,0.20); }
+    .pl-card-karen .pl-etapill .pl-eta-d { color: #7c2d12; }
     /* Task status panel line */
     .pl-task-line { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; cursor: pointer; }
     .pl-task-line .pl-task-dot { width: 9px; height: 9px; border-radius: 50%; }
@@ -6919,6 +6941,61 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-card-karen .pl-eta-date, .pl-card-karen .pl-total-lbl, .pl-card-karen .pl-panel-lbl, .pl-card-karen .pl-eta-lbl, .pl-card-karen .pl-ext-lbl, .pl-card-karen .pl-foot-unassigned, .pl-card-karen .pl-wb-name { color: #7c2d12 !important; }
     .pl-card-karen .pl-total-val { color: #166534; }
     .pl-card-karen .pl-foot { border-top-color: rgba(124,45,18,0.18); }
+    /* ── Sleek pipeline card modal ──────────────────────────────────────── */
+    .plcm-modal { display: flex; flex-direction: row; }
+    .plcm-main { flex: 1 1 680px; min-width: 340px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: var(--surface); }
+    .plcm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 20px 24px 12px; }
+    .plcm-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .plcm-title { font-size: 19px; font-weight: 800; color: var(--text); letter-spacing: -0.01em; }
+    .plcm-subhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 9px; font-size: 12px; color: var(--text-muted); }
+    .plcm-head-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+    .plcm-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; transition: border-color .12s, background .12s; }
+    .plcm-btn:hover { border-color: var(--accent); }
+    .plcm-btn-primary { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+    .plcm-btn-primary:hover { background: #4338ca; border-color: #4338ca; }
+    .plcm-assigned-wrap { padding: 0 24px 14px; border-bottom: 1px solid var(--border); }
+    .plcm-assigned-row { display: flex; align-items: center; gap: 10px; }
+    .plcm-assigned-lbl { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+    .plcm-assignees { display: inline-flex; align-items: center; }
+    .plcm-assignees .pl-avatar { width: 26px; height: 26px; font-size: 11px; border: 2px solid var(--surface); }
+    .plcm-assignees .pl-avatar + .pl-avatar { margin-left: -8px; }
+    .plcm-assign-add { width: 26px; height: 26px; border-radius: 50%; border: 1.5px dashed var(--border); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; cursor: pointer; margin-left: 8px; flex: 0 0 auto; }
+    .plcm-assign-add:hover { border-color: var(--accent); color: var(--accent); }
+    .plcm-roster { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .plcm-body { flex: 1 1 auto; overflow-y: auto; padding: 18px 24px 22px; }
+    .plcm-summary { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
+    .plcm-sum-cell { padding: 14px 16px; border-right: 1px solid var(--border); min-width: 0; }
+    .plcm-sum-cell:last-child { border-right: none; }
+    .plcm-sum-lbl { font-size: 11px; color: var(--text-muted); margin-bottom: 5px; }
+    .plcm-sum-val { font-size: 16px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+    .plcm-sum-val.ext { color: #34d399; }
+    .plcm-section-lbl { font-size: 13px; font-weight: 800; color: var(--text); margin: 0 0 10px; }
+    .plcm-wb-list { margin-bottom: 22px; }
+    .plcm-wb-grp { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 12px 0 4px; }
+    .plcm-wb-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-radius: 10px; cursor: pointer; transition: background .12s; }
+    .plcm-wb-row:hover { background: var(--surface2); }
+    .plcm-wb-ic { width: 34px; height: 34px; border-radius: 9px; background: rgba(107,147,255,0.14); color: #93b0ff; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+    .plcm-wb-ic svg { width: 17px; height: 17px; }
+    .plcm-wb-name { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .plcm-wb-col { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: 0 0 auto; min-width: 70px; }
+    .plcm-wb-col-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+    .plcm-wb-col-val { font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+    .plcm-wb-col-val.ext { color: #34d399; }
+    .plcm-wb-caret { color: var(--text-muted); font-size: 18px; flex: 0 0 auto; }
+    .plcm-notes { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 13px; font-family: inherit; box-sizing: border-box; resize: vertical; min-height: 110px; background: var(--surface2); color: var(--text); }
+    .plcm-comments { flex: 0 0 360px; border-left: 1px solid var(--border); background: var(--surface2); display: flex; flex-direction: column; min-height: 0; }
+    .plcm-comments-top { display: flex; align-items: center; gap: 8px; padding: 18px 18px 12px; flex-shrink: 0; }
+    .plcm-comments-title { font-size: 15px; font-weight: 800; color: var(--text); }
+    .plcm-comments-list { flex: 1 1 auto; min-height: 80px; overflow-y: auto; padding: 0 14px; border-top: none; margin: 0; }
+    .plcm-empty { text-align: center; color: var(--text-muted); padding: 44px 16px; }
+    .plcm-empty-ic { width: 46px; height: 46px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; font-size: 20px; }
+    .plcm-empty-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+    .plcm-empty-sub { font-size: 12px; }
+    .plcm-composer { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .plcm-composer-input { flex: 1 1 auto; min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 10px 13px; font-size: 13px; font-family: inherit; box-sizing: border-box; background: var(--surface); color: var(--text); }
+    .plcm-send { width: 38px; height: 38px; flex: 0 0 auto; border-radius: 10px; background: #4f46e5; border: none; color: #fff; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .plcm-send:hover { background: #4338ca; }
+    @media (max-width: 860px) { .plcm-modal { flex-direction: column; } .plcm-comments { flex: 1 1 auto; border-left: none; border-top: 1px solid var(--border); } }
     /* ── Shipping Calendar ─────────────────────────────────────────────── */
     .cal-weekdays { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; }
     .cal-weekday { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); text-align:center; padding:4px 0; }
@@ -13178,57 +13255,52 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
 <!-- ── Pipeline card detail modal ─────────────────────────────────────── -->
 <div class="modal-overlay" id="pl-card-modal" onclick="if(event.target===this)closePipelineCardModal()" style="z-index:1250;">
-  <div class="modal" style="max-width:1040px; width:96vw; display:flex; flex-direction:column; overflow:hidden; max-height:92vh; padding:0;">
-    <!-- Header bar — title + stage on the left, actions pinned top-right
-         (matches the CRM card modal). The card auto-saves, so there's no
-         Save button; Done just closes. -->
-    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 24px 14px; border-bottom:1px solid var(--border); flex-shrink:0;">
-      <div style="min-width:0;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <div class="modal-title" id="pl-modal-title" style="margin-bottom:4px;">Card</div>
-          <span id="pl-modal-title-edit" style="display:none; margin-bottom:4px;"></span>
+  <div class="modal plcm-modal" style="max-width:1120px; width:96vw; overflow:hidden; max-height:92vh; padding:0;">
+    <!-- LEFT: details -->
+    <div class="plcm-main">
+      <div class="plcm-head">
+        <div style="min-width:0; flex:1 1 auto;">
+          <div class="plcm-title-row">
+            <span class="plcm-title" id="pl-modal-title">Card</span>
+            <span id="pl-modal-title-edit"></span>
+          </div>
+          <div class="plcm-subhead" id="pl-modal-stage"></div>
         </div>
-        <div id="pl-modal-stage" style="font-size:12px; color:var(--text-muted);"></div>
+        <div class="plcm-head-actions">
+          <span id="pl-modal-saved-hint" style="font-size:11px; font-weight:700; color:#16a34a; opacity:0; transition:opacity 0.2s;">✓ Saved</span>
+          <span id="pl-modal-done-slot"></span>
+          <button type="button" class="plcm-btn" id="pl-modal-open-btn">Open</button>
+          <button type="button" class="plcm-btn plcm-btn-primary" onclick="closePipelineCardModal()" title="Close — changes save automatically">Done</button>
+        </div>
       </div>
-      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
-        <span id="pl-modal-saved-hint" style="font-size:11px; font-weight:700; color:#16a34a; opacity:0; transition:opacity 0.2s;">✓ Saved</span>
-        <button type="button" class="btn btn-ghost" id="pl-modal-open-btn" style="border-color:var(--accent); color:var(--accent);">Open</button>
-        <button type="button" class="btn btn-primary" onclick="closePipelineCardModal()" title="Close — changes save automatically">Done</button>
+      <div class="plcm-assigned-wrap">
+        <div class="plcm-assigned-row">
+          <span class="plcm-assigned-lbl">Assigned</span>
+          <div id="pl-modal-assignees" class="plcm-assignees"></div>
+        </div>
+        <div id="pl-modal-assignee-roster" class="plcm-roster" style="display:none;"></div>
+      </div>
+      <div class="plcm-body">
+        <div class="plcm-summary" id="pl-modal-facts"></div>
+        <div id="pl-modal-contents"></div>
+        <div class="plcm-section-lbl">Notes</div>
+        <textarea id="pl-modal-note" rows="4" placeholder="Decision notes, blockers, next step…" oninput="_plCardAutoSaveDebounced()" class="plcm-notes"></textarea>
       </div>
     </div>
-    <div style="display:flex; flex:1 1 auto; min-height:0; overflow:hidden;">
-      <!-- LEFT: card details (facts, contents, assignees, notes). -->
-      <div style="flex:1 1 620px; min-width:360px; overflow-y:auto; padding:16px 24px 20px;">
-        <div class="pl-facts" id="pl-modal-facts"></div>
-        <div id="pl-modal-contents"></div>
-        <div style="margin-bottom:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Assigned to</div>
-        <div id="pl-modal-assignees" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;"></div>
-        <div style="margin-bottom:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Notes</div>
-        <textarea id="pl-modal-note" rows="4" placeholder="Decision notes, blockers, next step…" oninput="_plCardAutoSaveDebounced()"
-          style="width:100%; border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px; font-family:inherit; box-sizing:border-box; resize:vertical; min-height:90px;"></textarea>
+    <!-- RIGHT: comments -->
+    <div class="plcm-comments">
+      <div class="plcm-comments-top">
+        <span class="plcm-comments-title">Comments</span>
+        <span class="pl-comments-count" id="pl-modal-comment-count">0</span>
+        <span class="pl-comments-hint" id="pl-modal-comment-hint" style="display:none;"></span>
       </div>
-      <!-- RIGHT: comments thread, Trello-style — composer pinned at the top,
-           list scrolls below. Save/Cancel reveal only once you type. -->
-      <div style="flex:0 0 380px; border-left:1px solid var(--border); background:var(--surface2); display:flex; flex-direction:column; min-height:0;">
-        <div style="padding:14px 16px 8px; flex-shrink:0;">
-          <div class="pl-comments-head" style="margin:0; padding-top:0; border-top:none;">
-            <span>&#128172; Comments</span>
-            <span class="pl-comments-count" id="pl-modal-comment-count">0</span>
-            <span class="pl-comments-hint" id="pl-modal-comment-hint"></span>
-          </div>
-        </div>
-        <div style="padding:4px 16px 12px; flex-shrink:0;">
-          <input type="text" id="pl-comment-input" placeholder="Write a comment…" autocomplete="off"
-            oninput="_plCommentInputChanged()"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();addPipelineComment();}"
-            style="width:100%; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box; background:var(--surface);" />
-          <div id="pl-comment-actions" style="display:none; justify-content:flex-end; gap:8px; margin-top:6px;">
-            <button type="button" onclick="_plCommentCancel()" style="padding:6px 12px; border-radius:6px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;">Cancel</button>
-            <button type="button" onclick="addPipelineComment()" style="padding:6px 14px; border-radius:6px; background:var(--accent); color:#fff; border:none; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;">Save</button>
-          </div>
-        </div>
-        <div id="pl-modal-comments" class="pl-comments" onclick="_focusPlCommentInput()" title="Click to add a comment"
-          style="flex:1 1 auto; min-height:80px; max-height:none; border-top:1px solid var(--border); margin:0;"></div>
+      <div id="pl-modal-comments" class="pl-comments plcm-comments-list" onclick="_focusPlCommentInput()" title="Click to add a comment"></div>
+      <div class="plcm-composer">
+        <input type="text" id="pl-comment-input" placeholder="Write a comment…" autocomplete="off"
+          oninput="_plCommentInputChanged()"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();addPipelineComment();}" class="plcm-composer-input" />
+        <button type="button" onclick="addPipelineComment()" class="plcm-send" title="Send comment">&#8594;</button>
+        <div id="pl-comment-actions" style="display:none;"></div>
       </div>
     </div>
   </div>
@@ -55034,6 +55106,37 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const ext = extStr ? `${valStr ? '<span class="pl-total-sep"></span>' : ''}<span class="pl-ext-lbl">Ext</span><span class="pl-ext-val">${_plEsc(extStr)}</span>` : '';
     return `<div class="pl-total-row">${total}${ext}</div>`;
   }
+  // Identity-row assignee spot: avatar stack + a dashed "+" that opens the
+  // picker (replaces the old bottom footer).
+  function _plCardAssignHtml(cid) {
+    const list = _assigneeList(cid);
+    const avatars = list.map(n => {
+      const col = (typeof CRM_ASSIGNEE_COLORS !== 'undefined' && CRM_ASSIGNEE_COLORS[n]) || { bg: '#4b5563', fg: '#fff' };
+      return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(n)}">${_plEsc(n.charAt(0).toUpperCase())}</span>`;
+    }).join('');
+    const enc = (typeof cid === 'string') ? cid.replace(/'/g, "\\'") : cid;
+    return `<span class="pl-ident-assign" onclick="event.stopPropagation(); openAssigneePicker('${enc}', event)" title="Assign / unassign">${avatars}<span class="pl-assign-plus">+</span></span>`;
+  }
+  // Compact ETD | ETA | transit pill for the card bottom row (shipments).
+  function _plEtaPillHtml(s) {
+    if (!s) return '';
+    const etd = s.etd ? _trackFmtDate(s.etd) : '';
+    const etaRaw = s.eta || (s.tracking && s.tracking.eta) || '';
+    const eta = etaRaw ? _trackFmtDate(etaRaw) : '';
+    if (!etd && !eta) return '';
+    let transit = '';
+    if (s.etd && etaRaw) { const d1 = new Date(s.etd), d2 = new Date(etaRaw); if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) { const n = Math.round((d2 - d1) / 86400000); if (n > 0) transit = `${n}d transit`; } }
+    const canLaunch = !!_carrierTrackingUrl(s.carrier, s.trackingNumber);
+    const clickAttr = canLaunch ? ` onclick="event.stopPropagation(); _openShipmentTracking('${_plEsc(String(s.id)).replace(/'/g, "\\'")}')" title="Open ${_plEsc(String(s.carrier || '').toUpperCase())} tracking"` : '';
+    return `<div class="pl-etapill${canLaunch ? ' pl-eta-click' : ''}"${clickAttr}><span class="pl-eta-k">ETD</span><span class="pl-eta-d">${_plEsc(etd || '—')}</span><span class="pl-eta-bar"></span><span class="pl-eta-k">ETA</span><span class="pl-eta-d">${_plEsc(eta || '—')}</span>${transit ? `<span class="pl-eta-t">${_plEsc(transit)}</span>` : ''}</div>`;
+  }
+  // Compact Production-ETA pill for the card bottom row (In-Production orders).
+  function _plProdEtaPillHtml(c) {
+    if (c.stage !== 'production') return '';
+    const eta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(orderData[c.id]) : null;
+    if (!eta) return '';
+    return `<div class="pl-etapill" title="Production ETA — ${eta.leadDays} business-day lead from the day it entered Production"><span class="pl-eta-k">Prod ETA</span><span class="pl-eta-d">${_plEsc(eta.dateFmt)}</span><span class="pl-eta-t">${eta.leadDays}d lead</span></div>`;
+  }
   // A workbook row inside the expanded "Workbooks in this job" panel.
   function _plEntityChildRow(w) {
     const href = `#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}`;
@@ -55133,18 +55236,26 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       : '';
     const cidJs = _plEsc(cid).replace(/'/g, "\\'");
     const clientChip = _plClientChipHtml(c);
-    const wbToggle = childRows ? _plWbToggleHtml(_wbClientBreakdown(wbs, wbs.length)) : '';
+    const single = wbs.length === 1;
+    // Identity row middle: single-workbook → inline total; else → workbooks toggle.
+    const identMid = single
+      ? (val ? `<span class="pl-inline-total">${_plEsc(val)}</span><span class="pl-ext-inline">${_plEsc(ext || '[EXT]')}</span>` : '')
+      : (childRows ? _plWbToggleHtml(_wbClientBreakdown(wbs, wbs.length)) : '');
+    const identSep = (clientChip && identMid) ? '<span class="pl-ident-sep"></span>' : '';
+    const expand = (!single && childRows)
+      ? `<div class="pl-expand">${_plTotalRowHtml(val, ext)}<div class="pl-panel pl-wb-panel-inner"><div class="pl-panel-lbl">Workbooks in this job</div>${childRows}</div></div>`
+      : '';
+    const botrow = `<div class="pl-botrow">${_plProdEtaPillHtml(c)}${_cardTaskPillHtml(c)}</div>`;
     return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDrag ? 'Drag between lanes, click to view, right-click for options' : 'View details — right-click for options'}">
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
-      ${_plIdentRowHtml(clientChip, wbToggle, _cardTaskPillHtml(c))}
-      ${_plProdEtaStripHtml(c)}
-      ${_plTotalRowHtml(val, ext)}
+      <div class="pl-title-sep"></div>
+      <div class="pl-ident-row">${clientChip}${identSep}${identMid}${_plCardAssignHtml(cid)}</div>
       ${_entityIsDone('order', c.id) ? _doneBadgeHtml(orderData[c.id]) : ''}
-      ${childRows ? `<div class="pl-panel pl-wb-panel"><div class="pl-panel-lbl">Workbooks in this job</div>${childRows}</div>` : ''}
+      ${expand}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
-      ${_plEntityFooterHtml(cid)}
+      ${botrow}
     </div>`;
   }
 
@@ -55180,7 +55291,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   function _pipelineShipmentCardHtml(c) {
     const groups = c.groups || [];
-    const hasBody = groups.some(g => (g.workbooks || []).length);
+    const wbCount = groups.reduce((n, g) => n + (g.workbooks || []).length, 0);
+    const single = wbCount === 1;
     const wbPanel = (groups.length > 1)
       ? groups.map(g => `<div class="pl-wb-grp">${_plEsc(g.label)}</div>${(g.workbooks || []).map(_plEntityChildRow).join('')}`).join('')
       : groups.map(g => (g.workbooks || []).map(_plEntityChildRow).join('')).join('');
@@ -55198,20 +55310,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'shipment:${c.id}')" ondragend="onPipelineDragEnd(event)"`
       : '';
     const clientChip = _plClientChipHtml(c);
-    const wbToggle = hasBody ? _plWbToggleHtml(_shipmentWbBreakdown(c)) : '';
     const val = _plEntityUsd(c.value);
-    const etaStrip = _shipmentEtaStripHtml(s) || `<div class="pl-panel"><div class="pl-panel-lbl">Status</div>${_shipmentStatusPillHtml(c.id)}</div>`;
+    const identMid = single
+      ? (val ? `<span class="pl-inline-total">${_plEsc(val)}</span><span class="pl-ext-inline">${_plEsc(ext || '[EXT]')}</span>` : '')
+      : (wbPanel ? _plWbToggleHtml(_shipmentWbBreakdown(c)) : '');
+    const identSep = (clientChip && identMid) ? '<span class="pl-ident-sep"></span>' : '';
+    const expand = (!single && wbPanel)
+      ? `<div class="pl-expand">${_plTotalRowHtml(val, ext)}<div class="pl-panel pl-wb-panel-inner"><div class="pl-panel-lbl">Workbooks in this job</div>${wbPanel}</div></div>`
+      : '';
+    // Bottom row: ETD/ETA pill (falls back to the status pill) + Task pill.
+    const etaPill = _plEtaPillHtml(s) || _shipmentStatusPillHtml(c.id);
+    const botrow = `<div class="pl-botrow">${etaPill}${_cardTaskPillHtml(c)}</div>`;
     return `<div class="crm-card pl-card ${canDragShip ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDragShip ? 'Drag to Receiving to mark Delivered, click to view, right-click for options' : 'View details — right-click for options'}">
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
-      ${_plIdentRowHtml(clientChip, wbToggle, _cardTaskPillHtml(c))}
-      ${_plTotalRowHtml(val, ext)}
+      <div class="pl-title-sep"></div>
+      <div class="pl-ident-row">${clientChip}${identSep}${identMid}${_plCardAssignHtml(cid)}</div>
       ${_entityIsDone('shipment', c.id) ? _doneBadgeHtml(shipmentData[c.id]) : ''}
-      ${wbPanel ? `<div class="pl-panel pl-wb-panel"><div class="pl-panel-lbl">Workbooks in this job</div>${wbPanel}</div>` : ''}
-      ${etaStrip}
+      ${expand}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
-      ${_plEntityFooterHtml(cid)}
+      ${botrow}
     </div>`;
   }
 
@@ -56175,54 +56294,41 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         _plTitleEdit.innerHTML = '';
       }
     }
+    const _daysTxt = (days === null) ? '' : (days <= 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} in stage`);
     document.getElementById('pl-modal-stage').innerHTML =
-      `<span style="display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; background:${col.bg || '#eee'}; color:${col.fg || '#333'};">${_plEsc(col.label || c.stage)}</span>`
-      + (days === null ? '' : ` <span style="margin-left:8px;">in this stage ${days <= 0 ? 'since today' : days + ' day' + (days === 1 ? '' : 's')}</span>`)
-      + ((c.kind === 'order' || c.kind === 'shipment') && typeof _doneDetailToggleHtml === 'function' ? (' <span style="margin-left:10px;">' + _doneDetailToggleHtml(c.kind, String(c.id)) + '</span>') : '');
+      `<span style="display:inline-flex; align-items:center; padding:3px 11px; border-radius:99px; font-size:11px; font-weight:800; background:${col.bg || '#eee'}; color:${col.fg || '#333'};">${_plEsc(col.label || c.stage)}</span>`
+      + (_daysTxt ? `<span style="display:inline-flex; align-items:center; gap:4px;">🕒 ${_plEsc(_daysTxt)}</span>` : '');
+    // Header "Mark done" toggle (order / shipment only).
+    const _doneSlot = document.getElementById('pl-modal-done-slot');
+    if (_doneSlot) _doneSlot.innerHTML = ((c.kind === 'order' || c.kind === 'shipment') && typeof _doneDetailToggleHtml === 'function') ? _doneDetailToggleHtml(c.kind, String(c.id)) : '';
 
-    const facts = [];
+    // ── Summary row (3 cells) + workbook rows ──
+    const _primaryClient = (c.kind === 'wb') ? (c.clientName || '—') : ((c.clients && c.clients[0]) || String(c.sub || '').split(' · ')[0] || '—');
+    let cells;
     if (c.kind === 'wb') {
       const st = (typeof _wbStatsForPicker === 'function') ? (_wbStatsForPicker(c.detail) || {}) : {};
-      const lines = Array.isArray(c.detail.rfqItems) ? c.detail.rfqItems.filter(i => i && (i.item || i.qty || i.priceRmb)).length : 0;
-      facts.push(['Client', c.clientName]);
-      facts.push(['Units', st.units > 0 ? st.units.toLocaleString('en-US') : '—']);
-      facts.push(['Customer value', c.value > 0 ? money(c.value) : '—']);
-      facts.push(['Our cost', st.cost > 0 ? money(st.cost) : '—']);
-      facts.push(['Lead time', st.leadDays > 0 ? `${st.leadDays} days` : '—']);
-      facts.push(['Line items', String(lines)]);
-      // Carrier box — when this workbook is on a shipment with a tracking
-      // number, show the carrier + a launch button to the carrier's page.
-      const _trk = (typeof _wbTrackedShipments === 'function') ? _wbTrackedShipments(c.clientName, c.workbookId) : [];
-      if (_trk.length) {
-        const ts = _trk[0].s;
-        facts.push(['Carrier', (ts.carrier || '—').toUpperCase(), _carrierLaunchBtnHtml(ts.carrier, ts.trackingNumber)]);
-        facts.push(['Tracking #', ts.trackingNumber || '—']);
-      }
-    } else if (c.kind === 'order') {
-      facts.push(['Client', (c.clients && c.clients[0]) || String(c.sub || '').split(' · ')[0] || '—']);
-      facts.push(['Workbooks', String((c.workbooks || []).length)]);
-      facts.push(['Gross total', c.totalUsd > 0 ? money(c.totalUsd) : '—']);
-      if (c.flagged) facts.push(['Flag', 'Change requested']);
+      cells = [['Client', _primaryClient, false], ['Customer value', c.value > 0 ? money(c.value) : '—', false], ['Our cost', st.cost > 0 ? money(st.cost) : '—', false]];
     } else {
-      const s = shipmentData[c.id] || {};
-      facts.push(['Carrier', (s.carrier || '—').toUpperCase(), _carrierLaunchBtnHtml(s.carrier, s.trackingNumber)]);
-      facts.push(['Tracking', s.trackingNumber || '—']);
-      facts.push(['Status', _SHIP_STATUS_LABEL(s.status)]);
-      facts.push(['ETA', (s.tracking && s.tracking.eta) || s.eta || '—']);
-      facts.push(['Workbooks', String(c.count || 0)]);
-      facts.push(['Value', c.value > 0 ? money(c.value) : '—']);
+      const gross = (c.kind === 'order') ? (c.totalUsd || 0) : (c.value || 0);
+      cells = [['Client', _primaryClient, false], ['Gross total', gross > 0 ? money(gross) : '—', false], ['EXT total', '[EXT]', true]];
     }
-    // Fact value may carry an optional 3rd element = raw HTML (e.g. the
-    // carrier "Track ↗" launch button) appended after the escaped value.
-    document.getElementById('pl-modal-facts').innerHTML = facts.map(f =>
-      `<div class="pl-fact"><div class="pl-fact-label">${_plEsc(f[0])}</div><div class="pl-fact-value">${_plEsc(f[1])}${f[2] ? ' ' + f[2] : ''}</div></div>`).join('');
+    document.getElementById('pl-modal-facts').innerHTML = cells.map(cl =>
+      `<div class="plcm-sum-cell"><div class="plcm-sum-lbl">${_plEsc(cl[0])}</div><div class="plcm-sum-val${cl[2] ? ' ext' : ''}">${_plEsc(cl[1])}</div></div>`).join('');
 
-    const row = w => `<li><span>${_plEsc(w.product)}</span><a href="#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}" onclick="closePipelineCardModal()" style="color:var(--accent); font-size:12px; white-space:nowrap;">open &rarr;</a></li>`;
+    const _wbIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>';
+    const wbModalRow = (cn, wid, product) => {
+      const d = workbookDetail[`${cn}|${wid}`] || {};
+      const tot = parseFloat(d.pricingClientQuoteTotal) || 0;
+      const totStr = tot > 0 ? money(tot) : '[$ TOTAL]';
+      const href = `#/client/${encodeURIComponent(cn)}/workbook/${wid}`;
+      return `<div class="plcm-wb-row" onclick="closePipelineCardModal(); location.hash='${href}'" title="Open ${_plEsc(product)}"><span class="plcm-wb-ic">${_wbIcon}</span><span class="plcm-wb-name">${_plEsc(product)}</span><span class="plcm-wb-col"><span class="plcm-wb-col-lbl">Total</span><span class="plcm-wb-col-val">${_plEsc(totStr)}</span></span><span class="plcm-wb-col"><span class="plcm-wb-col-lbl">Ext</span><span class="plcm-wb-col-val ext">[EXT]</span></span><span class="plcm-wb-caret">›</span></div>`;
+    };
     let contents = '';
     if (c.kind === 'order' && (c.workbooks || []).length) {
-      contents = `<div class="pl-modal-group">Workbooks</div><ul class="pl-modal-list">${c.workbooks.map(row).join('')}</ul>`;
+      contents = `<div class="plcm-section-lbl">Workbooks</div><div class="plcm-wb-list">${c.workbooks.map(w => wbModalRow(w.cn, w.wid, w.product)).join('')}</div>`;
     } else if (c.kind === 'shipment' && (c.groups || []).length) {
-      contents = c.groups.map(g => `<div class="pl-modal-group">${_plEsc(g.label)}</div><ul class="pl-modal-list">${g.workbooks.map(row).join('')}</ul>`).join('');
+      const multi = c.groups.length > 1;
+      contents = `<div class="plcm-section-lbl">Workbooks</div><div class="plcm-wb-list">${c.groups.map(g => `${multi ? `<div class="plcm-wb-grp">${_plEsc(g.label)}</div>` : ''}${(g.workbooks || []).map(w => wbModalRow(w.cn, w.wid, w.product)).join('')}`).join('')}</div>`;
     }
     document.getElementById('pl-modal-contents').innerHTML = contents;
     document.getElementById('pl-modal-note').value = meta.note || '';
@@ -56244,15 +56350,29 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _renderPlModalAssignees() {
     const host = document.getElementById('pl-modal-assignees');
     if (!host) return;
-    const roster = (typeof CRM_ASSIGNEE_ROSTER !== 'undefined') ? CRM_ASSIGNEE_ROSTER : ['Parker','Jackson','Ron','Kylie','Karen'];
-    host.innerHTML = roster.map(name => {
+    const assigned = Array.from(_plModalAssignees);
+    const avatars = assigned.map(name => {
       const col = (typeof CRM_ASSIGNEE_COLORS !== 'undefined' && CRM_ASSIGNEE_COLORS[name]) || { bg: '#4b5563', fg: '#fff' };
-      const on = _plModalAssignees.has(name);
-      const style = on ? `background:${col.bg}; color:${col.fg}; border:1px solid ${col.bg};`
-                       : `background:transparent; color:var(--text-muted); border:1px solid var(--border);`;
-      return `<button type="button" onclick="_togglePlAssignee('${_plEsc(name)}')" style="display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:99px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; ${style}">
-        <span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:${on ? 'rgba(255,255,255,0.25)' : col.bg}; color:#fff; font-size:10px; font-weight:800;">${_plEsc(name.charAt(0))}</span>${_plEsc(name)}</button>`;
+      return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(name)}">${_plEsc(name.charAt(0).toUpperCase())}</span>`;
     }).join('');
+    host.innerHTML = `${avatars}<span class="plcm-assign-add" onclick="_plToggleAssigneeRoster(event)" title="Add or remove people">+</span>`;
+    const rosterHost = document.getElementById('pl-modal-assignee-roster');
+    if (rosterHost) {
+      const roster = (typeof CRM_ASSIGNEE_ROSTER !== 'undefined') ? CRM_ASSIGNEE_ROSTER : ['Parker','Jackson','Ron','Kylie','Karen'];
+      rosterHost.innerHTML = roster.map(name => {
+        const col = (typeof CRM_ASSIGNEE_COLORS !== 'undefined' && CRM_ASSIGNEE_COLORS[name]) || { bg: '#4b5563', fg: '#fff' };
+        const on = _plModalAssignees.has(name);
+        const style = on ? `background:${col.bg}; color:${col.fg}; border:1px solid ${col.bg};`
+                         : `background:transparent; color:var(--text-muted); border:1px solid var(--border);`;
+        return `<button type="button" onclick="_togglePlAssignee('${_plEsc(name)}')" style="display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:99px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; ${style}">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:${on ? 'rgba(255,255,255,0.25)' : col.bg}; color:#fff; font-size:10px; font-weight:800;">${_plEsc(name.charAt(0))}</span>${_plEsc(name)}</button>`;
+      }).join('');
+    }
+  }
+  function _plToggleAssigneeRoster(e) {
+    if (e) e.stopPropagation();
+    const r = document.getElementById('pl-modal-assignee-roster');
+    if (r) r.style.display = (r.style.display === 'none' || !r.style.display) ? 'flex' : 'none';
   }
   function _togglePlAssignee(name) {
     const added = !_plModalAssignees.has(name);
@@ -56320,12 +56440,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _renderPlComments() {
     const host = document.getElementById('pl-modal-comments');
     if (!host) return;
-    // Newest first — the composer sits at the TOP of the thread now, so the
-    // most recent comment should be the one right under it.
+    // Oldest first — the composer sits at the BOTTOM, so the newest comment is
+    // the one right above it (standard chat order).
     const list = ((_plMeta[_plModalId] || {}).comments || []).slice()
-      .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+      .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
     const cnt = document.getElementById('pl-modal-comment-count');
     if (cnt) cnt.textContent = String(list.length);
+    if (!list.length) {
+      host.innerHTML = `<div class="plcm-empty"><div class="plcm-empty-ic">💬</div><div class="plcm-empty-title">No comments yet</div><div class="plcm-empty-sub">Start the conversation below.</div></div>`;
+      return;
+    }
     host.innerHTML = list.map(c => {
       const who = c.author || 'Someone';
       const rel = (typeof _crmRelTime === 'function') ? _crmRelTime(c.at) : '';
@@ -56340,14 +56464,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         </div>
       </div>`;
     }).join('');
-    // Newest is at the top now, so start the thread scrolled to the top and
-    // flag when there's older history below the fold.
-    host.scrollTop = 0;
-    const hint = document.getElementById('pl-modal-comment-hint');
-    if (hint) {
-      hint.textContent = (host.scrollHeight > host.clientHeight + 4)
-        ? '↕ scroll for earlier comments' : '';
-    }
+    // Newest is at the bottom (next to the composer) — scroll there.
+    host.scrollTop = host.scrollHeight;
   }
   // The comments list reads like a text box, so clicking it focuses the
   // composer rather than doing nothing.
