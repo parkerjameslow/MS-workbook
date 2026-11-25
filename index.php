@@ -6828,10 +6828,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-etapill .pl-eta-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
     .pl-task-pill:hover { filter: brightness(1.06); }
     .pl-task-pill .pl-task-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
-    .pl-task-pending { background: rgba(245,158,11,0.16); color: #b45309; border-color: rgba(245,158,11,0.35); }
-    .pl-task-pending .pl-task-dot { background: #f59e0b; }
-    .pl-task-done { background: rgba(16,185,129,0.16); color: #047857; border-color: rgba(16,185,129,0.38); }
-    .pl-task-done .pl-task-dot { background: #16a34a; }
+    .pl-task-pending { background: #1b2230; color: #cbd5e1; border-color: #2a3342; }
+    .pl-task-done { background: rgba(16,185,129,0.16); color: #4ade80; border-color: rgba(16,185,129,0.42); }
     /* Change-request flag on an order / shipment card. */
     .pl-flag {
       display: inline-block; margin-top: 6px; font-size: 9px; font-weight: 800;
@@ -55209,6 +55207,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!p) return '<div class="pl-title-sep"></div>';
     return `<div class="pl-progress" title="${p.done ? 'Arrived' : (p.pct + '% of the way to arrival')}"><div class="pl-progress-fill" style="width:${p.pct}%;"></div></div>`;
   }
+  // EXT = Order Profit (Total USD − Landed Cost), the same basis as the pricing
+  // tab's "Order Profit" (ps-order-profit). Per workbook, from cached pricing.
+  function _plWbProfit(cn, wid) {
+    const d = workbookDetail[`${cn}|${wid}`] || {};
+    const sale = parseFloat(d.pricingClientQuoteTotal) || 0;
+    const land = parseFloat(d.pricingLandedTotal) || 0;
+    if (sale <= 0 && land <= 0) return null;   // unpriced → unknown
+    return sale - land;
+  }
+  function _plEntityProfit(c) {
+    let sum = 0, any = false;
+    const add = (cn, wid) => { const p = _plWbProfit(cn, wid); if (p !== null) { sum += p; any = true; } };
+    if (c.kind === 'wb') add(c.clientName, c.workbookId);
+    else if (c.kind === 'order') (c.workbooks || []).forEach(w => add(w.cn, w.wid));
+    else if (c.kind === 'shipment') (c.groups || []).forEach(g => (g.workbooks || []).forEach(w => add(w.cn, w.wid)));
+    return any ? sum : null;
+  }
+  function _plProfitStr(n) {
+    if (n === null || n === undefined || isNaN(n)) return '';
+    return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  }
   // A workbook row inside the expanded "Workbooks in this job" panel.
   function _plEntityChildRow(w) {
     const href = `#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}`;
@@ -55296,8 +55315,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _pipelineOrderCardHtml(c) {
     const val = c.totalUsd > 0 ? `$${c.totalUsd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '';
     const wbs = c.workbooks || [];
-    const o = orderData[c.id] || {};
-    const ext = (o.poNumber || '').trim();
+    const ext = _plProfitStr(_plEntityProfit(c));   // EXT = order profit
     const childRows = wbs.map(_plEntityChildRow).join('');
     const cid = _plCardId(c);
     // Order cards can be dragged between Orders and In Production (the two
@@ -55311,7 +55329,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const single = wbs.length === 1;
     // Identity row middle: single-workbook → inline total; else → workbooks toggle.
     const identMid = single
-      ? (val ? `<span class="pl-inline-total">${_plEsc(val)}</span><span class="pl-ext-inline">${_plEsc(ext || '[EXT]')}</span>` : '')
+      ? (val ? `<span class="pl-inline-total">${_plEsc(val)}</span>${ext ? `<span class="pl-ext-inline">Ext ${_plEsc(ext)}</span>` : ''}` : '')
       : (childRows ? _plWbToggleHtml(_wbClientBreakdown(wbs, wbs.length)) : '');
     const identSep = (clientChip && identMid) ? '<span class="pl-ident-sep"></span>' : '';
     const expand = (!single && childRows)
@@ -55372,10 +55390,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       : groups.map(g => (g.workbooks || []).map(_plEntityChildRow).join('')).join('');
     const cid = _plCardId(c);
     const cidJs = _plEsc(cid).replace(/'/g, "\\'");
-    // EXT — the PO number of the first order on this shipment, when present.
     const s = shipmentData[c.id] || {};
-    let ext = '';
-    (s.entries || []).some(e => { if (e && e.orderId && orderData[e.orderId] && (orderData[e.orderId].poNumber || '').trim()) { ext = orderData[e.orderId].poNumber.trim(); return true; } return false; });
+    const ext = _plProfitStr(_plEntityProfit(c));   // EXT = order profit (summed)
     // Shipments cards can be dragged → Receiving (marks the shipment Delivered,
     // routed through the same transition as the Move menu). Receiving-stage
     // shipment cards stay locked.
@@ -55386,7 +55402,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const clientChip = _plClientChipHtml(c);
     const val = _plEntityUsd(c.value);
     const identMid = single
-      ? (val ? `<span class="pl-inline-total">${_plEsc(val)}</span><span class="pl-ext-inline">${_plEsc(ext || '[EXT]')}</span>` : '')
+      ? (val ? `<span class="pl-inline-total">${_plEsc(val)}</span>${ext ? `<span class="pl-ext-inline">Ext ${_plEsc(ext)}</span>` : ''}` : '')
       : (wbPanel ? _plWbToggleHtml(_shipmentWbBreakdown(c)) : '');
     const identSep = (clientChip && identMid) ? '<span class="pl-ident-sep"></span>' : '';
     const expand = (!single && wbPanel)
@@ -56383,7 +56399,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       cells = [['Client', _primaryClient, false], ['Customer value', c.value > 0 ? money(c.value) : '—', false], ['Our cost', st.cost > 0 ? money(st.cost) : '—', false]];
     } else {
       const gross = (c.kind === 'order') ? (c.totalUsd || 0) : (c.value || 0);
-      cells = [['Client', _primaryClient, false], ['Gross total', gross > 0 ? money(gross) : '—', false], ['EXT total', '[EXT]', true]];
+      const prof = _plEntityProfit(c);
+      cells = [['Client', _primaryClient, false], ['Gross total', gross > 0 ? money(gross) : '—', false], ['EXT total', prof !== null ? _plProfitStr(prof) : '—', true]];
     }
     document.getElementById('pl-modal-facts').innerHTML = cells.map(cl =>
       `<div class="plcm-sum-cell"><div class="plcm-sum-lbl">${_plEsc(cl[0])}</div><div class="plcm-sum-val${cl[2] ? ' ext' : ''}">${_plEsc(cl[1])}</div></div>`).join('');
@@ -56392,9 +56409,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const wbModalRow = (cn, wid, product) => {
       const d = workbookDetail[`${cn}|${wid}`] || {};
       const tot = parseFloat(d.pricingClientQuoteTotal) || 0;
-      const totStr = tot > 0 ? money(tot) : '[$ TOTAL]';
+      const totStr = tot > 0 ? money(tot) : '—';
+      const pf = _plWbProfit(cn, wid);
+      const extStr = (pf !== null) ? _plProfitStr(pf) : '—';
       const href = `#/client/${encodeURIComponent(cn)}/workbook/${wid}`;
-      return `<div class="plcm-wb-row" onclick="closePipelineCardModal(); location.hash='${href}'" title="Open ${_plEsc(product)}"><span class="plcm-wb-ic">${_wbIcon}</span><span class="plcm-wb-name">${_plEsc(product)}</span><span class="plcm-wb-col"><span class="plcm-wb-col-lbl">Total</span><span class="plcm-wb-col-val">${_plEsc(totStr)}</span></span><span class="plcm-wb-col"><span class="plcm-wb-col-lbl">Ext</span><span class="plcm-wb-col-val ext">[EXT]</span></span><span class="plcm-wb-caret">›</span></div>`;
+      return `<div class="plcm-wb-row" onclick="closePipelineCardModal(); location.hash='${href}'" title="Open ${_plEsc(product)}"><span class="plcm-wb-ic">${_wbIcon}</span><span class="plcm-wb-name">${_plEsc(product)}</span><span class="plcm-wb-col"><span class="plcm-wb-col-lbl">Total</span><span class="plcm-wb-col-val">${_plEsc(totStr)}</span></span><span class="plcm-wb-col"><span class="plcm-wb-col-lbl">Ext</span><span class="plcm-wb-col-val ext">${_plEsc(extStr)}</span></span><span class="plcm-wb-caret">›</span></div>`;
     };
     let contents = '';
     if (c.kind === 'order' && (c.workbooks || []).length) {
