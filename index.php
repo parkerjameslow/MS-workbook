@@ -54612,6 +54612,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!url) return '';
     return `<a href="${url}" target="_blank" rel="noopener" class="pl-carrier-launch" onclick="event.stopPropagation();" title="Open the ${_plEsc(String(carrier).toUpperCase())} tracking page">Track</a>`;
   }
+  // Open a shipment's carrier tracking website in a new tab (used by the card
+  // tracking/status pills — clicking the pill launches the carrier page rather
+  // than refreshing).
+  function _openShipmentTracking(sid) {
+    const s = shipmentData[sid];
+    if (!s) return;
+    const url = _carrierTrackingUrl(s.carrier, s.trackingNumber);
+    if (url) { window.open(url, '_blank', 'noopener'); }
+    else if (typeof _msToast === 'function') { _msToast('No online tracking link for this carrier — open the shipment to refresh status.', 'warn'); }
+  }
   // The tracking pill for a workbook card. Empty when no tracked shipment.
   // Split across shipments → shows the LEAST-progressed one.
   function _wbTrackingPillHtml(clientName, workbookId) {
@@ -54625,8 +54635,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     let sub = '';
     if (cb.key === 'delivered' && cb.deliveredOn) sub = ' · ' + _trackFmtDate(cb.deliveredOn);
     else if (cb.key === 'in_transit' && cb.eta) sub = ' · ETA ' + _trackFmtDate(cb.eta);
-    const title = `${String(chosen.s.carrier).toUpperCase()} ${chosen.s.trackingNumber} — click to refresh`;
-    return `<div class="pl-track-pill pl-track-${cb.key}" onclick="event.stopPropagation(); refreshWbTracking('${_plEsc(String(chosen.id)).replace(/'/g, "\\'")}')" title="${_plEsc(title)}">
+    const hasUrl = !!_carrierTrackingUrl(chosen.s.carrier, chosen.s.trackingNumber);
+    const title = `${String(chosen.s.carrier).toUpperCase()} ${chosen.s.trackingNumber}${hasUrl ? ' — click to open carrier tracking' : ''}`;
+    const clickAttr = hasUrl ? ` onclick="event.stopPropagation(); _openShipmentTracking('${_plEsc(String(chosen.id)).replace(/'/g, "\\'")}')"` : '';
+    return `<div class="pl-track-pill pl-track-${cb.key}"${clickAttr} title="${_plEsc(title)}">
       <span class="pl-track-dot" style="background:${dotCol[cb.key]};"></span>${labels[cb.key]}${_plEsc(sub)}</div>`;
   }
   // Status pill for a shipment card. When we have a scraped carrier status it
@@ -54635,9 +54647,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _shipmentStatusPillHtml(id) {
     const s = shipmentData[id];
     if (!s) return '';
-    const canRefresh = !!(s.carrier && s.trackingNumber);
-    const clickAttr = canRefresh
-      ? ` onclick="event.stopPropagation(); refreshWbTracking('${_plEsc(String(id)).replace(/'/g, "\\'")}')" title="Click to refresh ${_plEsc(String(s.carrier).toUpperCase())} tracking"`
+    const canLaunch = !!_carrierTrackingUrl(s.carrier, s.trackingNumber);
+    const clickAttr = canLaunch
+      ? ` onclick="event.stopPropagation(); _openShipmentTracking('${_plEsc(String(id)).replace(/'/g, "\\'")}')" title="Open ${_plEsc(String(s.carrier).toUpperCase())} tracking page"`
       : '';
     const dotCol = { pending: '#94a3b8', in_transit: '#6b93ff', delivered: '#22c55e' };
     // Carrier lives INSIDE the pill (e.g. "DHL · Delivered") — no standalone
