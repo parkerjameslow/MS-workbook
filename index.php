@@ -59704,7 +59704,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const overBadge = cbmOver > 0 ? ` <span style="color:#d97706; font-weight:800; margin-left:4px;">⚠ +${fmtCbm(cbmOver)} over</span>` : '';
     const autoReset = cbmOv > 0 ? ` <a href="javascript:void(0)" onclick="event.stopPropagation(); onOrderCbmChange('')" style="color:var(--accent); font-size:11px; margin-left:6px; text-decoration:none;" title="Revert to the computed CBM (${fmtCbm(computedCbm)})">↺ auto</a>` : '';
     const wtStr   = totalWeightKg > 0 ? fmtKg(totalWeightKg) : '—';
-    const showShipRow = effCbm > 0 || totalWeightKg > 0 || computedCbm > 0;
+    // Always render the Shipment row so the CBM can be entered from scratch
+    // even on an order with no computed volume yet.
+    const showShipRow = true;
     const shipRow = showShipRow
       ? `<tr>
           <td colspan="4" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
