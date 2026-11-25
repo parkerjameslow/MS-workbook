@@ -6818,12 +6818,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Per-stage Task status pill (Pending / Done) on Pre-Prod / Production /
        Shipments cards — click to toggle. */
     .pl-task-pill {
-      display: inline-flex; align-items: center; gap: 5px; margin-top: 0;
-      padding: 3px 9px; border-radius: 999px; font-size: 10px; font-weight: 800;
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 0;
+      padding: 5px 12px; border-radius: 999px; font-size: 11px; font-weight: 800;
       letter-spacing: 0.02em; cursor: pointer; user-select: none;
       border: 1px solid transparent; transition: filter .12s; white-space: nowrap;
     }
+    .pl-task-ic { width: 13px; height: 13px; flex: 0 0 auto; }
     .pl-ident-row .pl-task-pill { margin-left: auto; }
+    .pl-etapill .pl-eta-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
     .pl-task-pill:hover { filter: brightness(1.06); }
     .pl-task-pill .pl-task-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
     .pl-task-pending { background: rgba(245,158,11,0.16); color: #b45309; border-color: rgba(245,158,11,0.35); }
@@ -55062,10 +55064,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const cid = _plCardId(c);
     const cidJs = _plEsc(cid).replace(/'/g, "\\'");
     const done = _cardTaskStatus(cid, c.stage) === 'done';
+    const icon = done
+      ? '<svg class="pl-task-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>'
+      : '<svg class="pl-task-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v4.8l3 1.8"/></svg>';
     return `<div class="pl-task-pill ${done ? 'pl-task-done' : 'pl-task-pending'}"
                  onclick="event.stopPropagation(); _toggleCardTask('${cidJs}','${_plEsc(c.stage)}')"
                  title="Task status for this stage — click to mark ${done ? 'Pending' : 'Done'}. Resets to Pending when the card moves to another column.">
-      <span class="pl-task-dot"></span>Task: ${done ? 'Done' : 'Pending'}</div>`;
+      ${icon}${done ? 'Done' : 'Pending'}</div>`;
   }
   function _toggleCardTask(cid, stage) {
     const next = _cardTaskStatus(cid, stage) === 'done' ? 'pending' : 'done';
@@ -55120,25 +55125,37 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const enc = (typeof cid === 'string') ? cid.replace(/'/g, "\\'") : cid;
     return `<span class="pl-ident-assign" onclick="event.stopPropagation(); openAssigneePicker('${enc}', event)" title="Assign / unassign">${avatars}<span class="pl-assign-plus">+</span></span>`;
   }
-  // Compact ETD | ETA | transit pill for the card bottom row (shipments).
+  // Compact ETD | ETA | transit pill for the card bottom row (shipments). When
+  // there are no dates yet it falls back to a carrier · status pill in the SAME
+  // style, so it always pairs cleanly with the Task pill beside it.
   function _plEtaPillHtml(s) {
     if (!s) return '';
     const etd = s.etd ? _trackFmtDate(s.etd) : '';
     const etaRaw = s.eta || (s.tracking && s.tracking.eta) || '';
     const eta = etaRaw ? _trackFmtDate(etaRaw) : '';
-    if (!etd && !eta) return '';
-    let transit = '';
-    if (s.etd && etaRaw) { const d1 = new Date(s.etd), d2 = new Date(etaRaw); if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) { const n = Math.round((d2 - d1) / 86400000); if (n > 0) transit = `${n}d transit`; } }
     const canLaunch = !!_carrierTrackingUrl(s.carrier, s.trackingNumber);
     const clickAttr = canLaunch ? ` onclick="event.stopPropagation(); _openShipmentTracking('${_plEsc(String(s.id)).replace(/'/g, "\\'")}')" title="Open ${_plEsc(String(s.carrier || '').toUpperCase())} tracking"` : '';
-    return `<div class="pl-etapill${canLaunch ? ' pl-eta-click' : ''}"${clickAttr}><span class="pl-eta-k">ETD</span><span class="pl-eta-d">${_plEsc(etd || '—')}</span><span class="pl-eta-bar"></span><span class="pl-eta-k">ETA</span><span class="pl-eta-d">${_plEsc(eta || '—')}</span>${transit ? `<span class="pl-eta-t">${_plEsc(transit)}</span>` : ''}</div>`;
+    const clickCls = canLaunch ? ' pl-eta-click' : '';
+    if (etd || eta) {
+      let transit = '';
+      if (s.etd && etaRaw) { const d1 = new Date(s.etd), d2 = new Date(etaRaw); if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) { const n = Math.round((d2 - d1) / 86400000); if (n > 0) transit = `${n}d transit`; } }
+      return `<div class="pl-etapill${clickCls}"${clickAttr}><span class="pl-eta-k">ETD</span><span class="pl-eta-d">${_plEsc(etd || '—')}</span><span class="pl-eta-bar"></span><span class="pl-eta-k">ETA</span><span class="pl-eta-d">${_plEsc(eta || '—')}</span>${transit ? `<span class="pl-eta-t">${_plEsc(transit)}</span>` : ''}</div>`;
+    }
+    // Fallback: carrier · status, same pill shape.
+    const carr = s.carrier ? ((typeof _carrierLabel === 'function') ? _carrierLabel(s.carrier) : String(s.carrier).toUpperCase()) : '';
+    let key, lbl;
+    if (s.tracking && s.tracking.status) { const b = _trackBucket(s); key = b.key; lbl = { pending: 'Pending', in_transit: 'In Transit', delivered: 'Delivered' }[key] || ''; }
+    else { key = (s.status === 'delivered' || s.status === 'received') ? 'delivered' : (s.status === 'in_transit' ? 'in_transit' : 'pending'); lbl = (typeof _SHIP_STATUS_LABEL === 'function') ? _SHIP_STATUS_LABEL(s.status) : (s.status || ''); }
+    if (!carr && !lbl) return '';
+    const dot = ({ pending: '#94a3b8', in_transit: '#6b93ff', delivered: '#22c55e' })[key] || '#94a3b8';
+    return `<div class="pl-etapill${clickCls}"${clickAttr}><span class="pl-eta-dot" style="background:${dot};"></span><span class="pl-eta-d" style="font-size:11px; font-weight:700;">${carr ? _plEsc(carr) + ' · ' : ''}${_plEsc(lbl)}</span></div>`;
   }
   // Compact Production-ETA pill for the card bottom row (In-Production orders).
   function _plProdEtaPillHtml(c) {
     if (c.stage !== 'production') return '';
     const eta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(orderData[c.id]) : null;
     if (!eta) return '';
-    return `<div class="pl-etapill" title="Production ETA — ${eta.leadDays} business-day lead from the day it entered Production"><span class="pl-eta-k">Prod ETA</span><span class="pl-eta-d">${_plEsc(eta.dateFmt)}</span><span class="pl-eta-t">${eta.leadDays}d lead</span></div>`;
+    return `<div class="pl-etapill" title="Production ETA — ${eta.leadDays} business-day lead from the day it entered Production"><span class="pl-eta-k">ETA</span><span class="pl-eta-d">${_plEsc(eta.dateFmt)}</span></div>`;
   }
   // Progress toward arrival for an entity card — drives the title progress bar
   // + the "Nd ETA" badge. Returns { pct, daysToEta, done } or null when there's
@@ -55329,8 +55346,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (!(cn in byClient)) { byClient[cn] = 0; order.push(cn); }
       byClient[cn]++;
     });
-    if (!order.length) {
-      const n = fallbackCount || 0;
+    // Single client (or none) → just "N workbooks" (the client chip already
+    // names them). Multiple clients → per-client breakdown.
+    if (order.length <= 1) {
+      const n = order.length ? byClient[order[0]] : (fallbackCount || 0);
       return `${n} workbook${n === 1 ? '' : 's'}`;
     }
     return order.map(cn => {
@@ -55374,9 +55393,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const expand = (!single && wbPanel)
       ? `<div class="pl-expand">${_plTotalRowHtml(val, ext)}<div class="pl-panel pl-wb-panel-inner"><div class="pl-panel-lbl">Workbooks in this job</div>${wbPanel}</div></div>`
       : '';
-    // Bottom row: ETD/ETA pill (falls back to the status pill) + Task pill.
-    const etaPill = _plEtaPillHtml(s) || _shipmentStatusPillHtml(c.id);
-    const botrow = `<div class="pl-botrow">${etaPill}${_cardTaskPillHtml(c)}</div>`;
+    // Bottom row: ETD/ETA (or carrier·status) pill + Task pill, matched styles.
+    const botrow = `<div class="pl-botrow">${_plEtaPillHtml(s)}${_cardTaskPillHtml(c)}</div>`;
     return `<div class="crm-card pl-card ${canDragShip ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDragShip ? 'Drag to Receiving to mark Delivered, click to view, right-click for options' : 'View details — right-click for options'}">
       ${_plEntityBadge(c)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
