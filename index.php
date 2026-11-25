@@ -6818,11 +6818,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Per-stage Task status pill (Pending / Done) on Pre-Prod / Production /
        Shipments cards — click to toggle. */
     .pl-task-pill {
-      display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
-      padding: 3px 11px; border-radius: 999px; font-size: 11px; font-weight: 800;
+      display: inline-flex; align-items: center; gap: 5px; margin-top: 0;
+      padding: 3px 9px; border-radius: 999px; font-size: 10px; font-weight: 800;
       letter-spacing: 0.02em; cursor: pointer; user-select: none;
-      border: 1px solid transparent; transition: filter .12s;
+      border: 1px solid transparent; transition: filter .12s; white-space: nowrap;
     }
+    .pl-ident-row .pl-task-pill { margin-left: auto; }
     .pl-task-pill:hover { filter: brightness(1.06); }
     .pl-task-pill .pl-task-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
     .pl-task-pending { background: rgba(245,158,11,0.16); color: #b45309; border-color: rgba(245,158,11,0.35); }
@@ -6859,11 +6860,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-wb-chev { font-size: 10px; opacity: 0.7; transition: transform .15s; flex: 0 0 auto; }
     .pl-card.pl-open .pl-wb-chev { transform: rotate(180deg); }
     /* total row (+ optional EXT) */
-    .pl-total-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 11px; flex-wrap: wrap; }
-    .pl-total-lbl, .pl-ext-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; }
-    .pl-total-val { font-size: 19px; font-weight: 800; color: #34d399; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
-    .pl-total-sep { width: 1px; align-self: stretch; min-height: 16px; background: rgba(255,255,255,0.12); }
-    .pl-ext-val { font-size: 13px; font-weight: 700; color: #cbd5e1; }
+    .pl-total-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; flex-wrap: wrap; }
+    .pl-total-lbl, .pl-ext-lbl { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; }
+    .pl-total-val { font-size: 13px; font-weight: 800; color: #34d399; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+    .pl-total-sep { width: 1px; align-self: stretch; min-height: 13px; background: rgba(255,255,255,0.12); }
+    .pl-ext-val { font-size: 12px; font-weight: 700; color: #cbd5e1; }
     /* inset panels (ETA strip, Task status, Workbooks) */
     .pl-panel { background: #1b2230; border: 1px solid #272f3d; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
     .pl-panel-lbl { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; margin-bottom: 7px; }
@@ -55017,10 +55018,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!text) return '';
     return `<button class="pl-wb-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');" title="Show / hide the workbooks in this card"><span>${_plEsc(text)}</span><span class="pl-wb-chev">▾</span></button>`;
   }
-  function _plIdentRowHtml(clientChip, wbToggle) {
-    if (!clientChip && !wbToggle) return '';
+  function _plIdentRowHtml(clientChip, wbToggle, taskPill) {
+    if (!clientChip && !wbToggle && !taskPill) return '';
     const sep = (clientChip && wbToggle) ? '<span class="pl-ident-sep"></span>' : '';
-    return `<div class="pl-ident-row">${clientChip}${sep}${wbToggle}</div>`;
+    return `<div class="pl-ident-row">${clientChip}${sep}${wbToggle}${taskPill || ''}</div>`;
   }
   function _plTotalRowHtml(valStr, extStr) {
     if (!valStr && !extStr) return '';
@@ -55135,12 +55136,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
-      ${_plIdentRowHtml(clientChip, wbToggle)}
+      ${_plIdentRowHtml(clientChip, wbToggle, _cardTaskPillHtml(c))}
       ${_plTotalRowHtml(val, ext)}
       ${_entityIsDone('order', c.id) ? _doneBadgeHtml(orderData[c.id]) : ''}
       ${childRows ? `<div class="pl-panel pl-wb-panel"><div class="pl-panel-lbl">Workbooks in this job</div>${childRows}</div>` : ''}
       ${_plProdEtaStripHtml(c)}
-      ${_plTaskPanelHtml(c)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${_plEntityFooterHtml(cid)}
     </div>`;
@@ -55203,12 +55203,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
-      ${_plIdentRowHtml(clientChip, wbToggle)}
+      ${_plIdentRowHtml(clientChip, wbToggle, _cardTaskPillHtml(c))}
       ${_plTotalRowHtml(val, ext)}
       ${_entityIsDone('shipment', c.id) ? _doneBadgeHtml(shipmentData[c.id]) : ''}
       ${wbPanel ? `<div class="pl-panel pl-wb-panel"><div class="pl-panel-lbl">Workbooks in this job</div>${wbPanel}</div>` : ''}
       ${etaStrip}
-      ${_plTaskPanelHtml(c)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${_plEntityFooterHtml(cid)}
     </div>`;
