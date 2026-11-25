@@ -6902,6 +6902,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-card.pl-entity .pl-progress { height: 4px; border-radius: 3px; background: rgba(255,255,255,0.08); margin: 3px -13px 12px; overflow: hidden; }
     .pl-card.pl-entity .pl-progress-fill { height: 100%; background: linear-gradient(90deg, #16a34a, #4ade80); border-radius: 3px; transition: width .5s ease; box-shadow: 0 0 8px rgba(74,222,128,0.45); }
     .pl-card-karen .pl-progress { background: rgba(0,0,0,0.08); }
+    /* Dual production + shipping lead bars (In-Production order cards). */
+    .pl-card.pl-entity .pl-dualbars { margin: 4px 0 12px; display: flex; flex-direction: column; gap: 6px; }
+    .pl-leadbar { display: flex; align-items: center; gap: 8px; }
+    .pl-leadbar-track { flex: 1 1 auto; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
+    .pl-leadbar-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
+    .pl-leadbar-prod .pl-leadbar-fill { background: linear-gradient(90deg, #6366f1, #818cf8); box-shadow: 0 0 6px rgba(129,140,248,0.45); }
+    .pl-leadbar-ship .pl-leadbar-fill { background: linear-gradient(90deg, #14b8a6, #2dd4bf); box-shadow: 0 0 6px rgba(45,212,191,0.45); }
+    .pl-leadbar-tag { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; color: #9aa6b8; white-space: nowrap; min-width: 58px; text-align: right; font-variant-numeric: tabular-nums; }
+    .pl-card-karen .pl-leadbar-track { background: rgba(0,0,0,0.08); }
+    .pl-card-karen .pl-leadbar-tag { color: #7c2d12; }
     .pl-ident-assign { margin-left: auto; display: inline-flex; align-items: center; cursor: pointer; flex: 0 0 auto; }
     .pl-ident-assign .pl-avatar { width: 22px; height: 22px; font-size: 10px; }
     .pl-assign-plus { width: 24px; height: 24px; border-radius: 50%; border: 1.5px dashed rgba(255,255,255,0.22); color: #9ca3af; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; margin-left: 5px; flex: 0 0 auto; transition: color .12s, border-color .12s; }
@@ -55208,9 +55218,56 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // The green arrival progress bar that replaces the title separator (falls back
   // to a plain separator line when there's no ETA to measure).
   function _plProgressBarHtml(c) {
+    // In-Production order → two bars: production (filling now) then shipping.
+    const dual = _plDualLeadBars(c);
+    if (dual) return dual;
     const p = _plArrivalProgress(c);
     if (!p) return '<div class="pl-title-sep"></div>';
     return `<div class="pl-progress" title="${p.done ? 'Arrived' : (p.pct + '% of the way to arrival')}"><div class="pl-progress-fill" style="width:${p.pct}%;"></div></div>`;
+  }
+  // Order's production + shipping lead (business days), each the MAX across its
+  // workbooks (shipLeadDays already uses the top of each ship range).
+  function _orderProdShipLeads(order) {
+    let maxProd = 0, maxShip = 0;
+    ((order && order.entries) || []).forEach(e => {
+      const d = workbookDetail[`${e.clientName}|${e.workbookId}`];
+      if (!d) return;
+      const w = (typeof _wbStatsForPicker === 'function') ? (_wbStatsForPicker(d) || {}) : {};
+      if ((w.prodLeadDays || 0) > maxProd) maxProd = w.prodLeadDays || 0;
+      if ((w.shipLeadDays || 0) > maxShip) maxShip = w.shipLeadDays || 0;
+    });
+    return { prodLead: maxProd, shipLead: maxShip };
+  }
+  // Two stacked bars for an In-Production order card: a Production bar that
+  // fills from the day it entered Production over the production lead, then a
+  // Shipping bar (its own color) that fills once production finishes. Each tag
+  // shows the projected END date. '' when not applicable.
+  function _plDualLeadBars(c) {
+    if (c.kind !== 'order' || c.stage !== 'production') return '';
+    const o = orderData[c.id] || {};
+    const startRaw = o.movedToProductionAt || o.notifiedAt;
+    if (!startRaw) return '';
+    const start = new Date(startRaw);
+    if (isNaN(start.getTime())) return '';
+    const leads = _orderProdShipLeads(o);
+    if (leads.prodLead <= 0 && leads.shipLead <= 0) return '';
+    const now = Date.now();
+    const fmt = d => (d && !isNaN(d.getTime())) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+    const clampPct = (a, b) => (b > a) ? Math.max(2, Math.min(100, Math.round(((now - a) / (b - a)) * 100))) : 100;
+    let rows = '', prodEnd = null;
+    if (leads.prodLead > 0) {
+      prodEnd = _addBusinessDays(start, leads.prodLead);
+      const pct = prodEnd ? clampPct(start.getTime(), prodEnd.getTime()) : 2;
+      rows += `<div class="pl-leadbar" title="Production: ${leads.prodLead} business days → done ~${fmt(prodEnd)}"><div class="pl-leadbar-track pl-leadbar-prod"><div class="pl-leadbar-fill" style="width:${pct}%;"></div></div><span class="pl-leadbar-tag">Prod ${fmt(prodEnd)}</span></div>`;
+    }
+    if (leads.shipLead > 0) {
+      const shipStart = prodEnd || start;
+      const shipEnd = _addBusinessDays(shipStart, leads.shipLead);
+      const started = shipStart && now >= shipStart.getTime();
+      const pct = (shipEnd && started) ? clampPct(shipStart.getTime(), shipEnd.getTime()) : 0;
+      rows += `<div class="pl-leadbar" title="Shipping: ${leads.shipLead} business days after production → arrives ~${fmt(shipEnd)}"><div class="pl-leadbar-track pl-leadbar-ship"><div class="pl-leadbar-fill" style="width:${pct}%;"></div></div><span class="pl-leadbar-tag">Ship ${fmt(shipEnd)}</span></div>`;
+    }
+    return rows ? `<div class="pl-dualbars">${rows}</div>` : '';
   }
   // EXT = Order Profit (Total USD − Landed Cost), the same basis as the pricing
   // tab's "Order Profit" (ps-order-profit). Per workbook, from cached pricing.
