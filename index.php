@@ -45386,11 +45386,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       totalRmb += price * tQty;
       totalUsd += (price / exchange) * tQty;
     });
+    // Operator CBM override — when set on the order, it wins over the computed
+    // sum so a hand-measured container volume flows to every CBM readout.
+    const _cbmOv = parseFloat(order.cbmOverride) || 0;
     return {
       wbCount:      (order.entries || []).length,
       qty:          qty,
       totalCartons: totalCartons,
-      totalCbm:     parseFloat(totalCbm.toFixed(2)),
+      totalCbm:     _cbmOv > 0 ? _cbmOv : parseFloat(totalCbm.toFixed(2)),
+      cbmComputed:  parseFloat(totalCbm.toFixed(2)),
+      cbmOverride:  _cbmOv > 0 ? _cbmOv : null,
       totalWeightKg: parseFloat(totalWeightKg.toFixed(1)),
       palletsNeeded: Math.ceil(palletsNeeded),
       totalRmb:     Math.round(totalRmb * 100) / 100,
@@ -59577,24 +59582,26 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const fmtKg  = n => n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg';
     const fmtCbm = n => n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
     const cbmCap = 67;
-    const fillPct = totalCbm > 0 ? Math.min(100, (totalCbm / cbmCap) * 100) : 0;
-    const cbmOver = totalCbm > cbmCap ? totalCbm - cbmCap : 0;
-    // Overflow indicator: amber bar + "+X.X over" pill when total
-    // CBM exceeds the single 40' HC container cap.
-    const cbmHtml = totalCbm > 0
-      ? (cbmOver > 0
-          ? `<span style="color:#d97706;">⚠</span> ${fmtCbm(totalCbm)} / ${cbmCap} CBM <span style="color:#d97706; font-weight:800; margin-left:4px;">+${fmtCbm(cbmOver)} over</span>`
-          : `${fmtCbm(totalCbm)} / ${cbmCap} CBM`)
-      : '—';
+    // Effective order CBM = the operator override (o.cbmOverride) when set, else
+    // the computed sum. The field below lets the operator update it.
+    const computedCbm = totalCbm;
+    const cbmOv = parseFloat(o.cbmOverride) || 0;
+    const effCbm = cbmOv > 0 ? cbmOv : computedCbm;
+    const fillPct = effCbm > 0 ? Math.min(100, (effCbm / cbmCap) * 100) : 0;
+    const cbmOver = effCbm > cbmCap ? effCbm - cbmCap : 0;
     const cbmBarColor = cbmOver > 0 ? '#f59e0b' : 'var(--accent)';
+    // Editable CBM input — defaults to the computed total; clearing it reverts.
+    const cbmInput = `<input type="number" step="0.1" min="0" value="${effCbm > 0 ? (Math.round(effCbm * 10) / 10) : ''}" placeholder="${computedCbm > 0 ? (Math.round(computedCbm * 10) / 10) : '0'}" onclick="event.stopPropagation(); this.select();" onchange="onOrderCbmChange(this.value)" title="Order CBM — editable. Defaults to the computed total (${fmtCbm(computedCbm)}); clear to revert." style="width:64px; text-align:right; padding:3px 6px; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); font-size:12px; font-weight:700; font-variant-numeric:tabular-nums;" />`;
+    const overBadge = cbmOver > 0 ? ` <span style="color:#d97706; font-weight:800; margin-left:4px;">⚠ +${fmtCbm(cbmOver)} over</span>` : '';
+    const autoReset = cbmOv > 0 ? ` <a href="javascript:void(0)" onclick="event.stopPropagation(); onOrderCbmChange('')" style="color:var(--accent); font-size:11px; margin-left:6px; text-decoration:none;" title="Revert to the computed CBM (${fmtCbm(computedCbm)})">↺ auto</a>` : '';
     const wtStr   = totalWeightKg > 0 ? fmtKg(totalWeightKg) : '—';
-    const showShipRow = totalCbm > 0 || totalWeightKg > 0;
+    const showShipRow = effCbm > 0 || totalWeightKg > 0 || computedCbm > 0;
     const shipRow = showShipRow
       ? `<tr>
           <td colspan="4" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
           <td colspan="5" style="text-align:right; font-size:12px; padding-top:4px;">
             <span style="color:var(--text-muted); margin-right:14px;">Weight: <strong style="color:var(--text);">${wtStr}</strong></span>
-            <span style="color:var(--text-muted);">CBM: <strong style="color:var(--text);">${cbmHtml}</strong></span>
+            <span style="color:var(--text-muted);">CBM: ${cbmInput} <span style="color:var(--text-muted);">/ ${cbmCap} CBM</span>${overBadge}${autoReset}</span>
             <div style="margin-top:5px; height:4px; background:var(--surface2); border-radius:99px; overflow:hidden; max-width:260px; margin-left:auto;">
               <div style="height:100%; width:${fillPct}%; background:${cbmBarColor}; border-radius:99px; transition:width 0.2s;"></div>
             </div>
@@ -60089,6 +60096,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!o) return;
     o.poNumber = document.getElementById('order-detail-po').value;
     saveOrders();
+  }
+
+  // Operator override of the order's CBM. Empty / 0 reverts to the computed
+  // sum. Persists on the order (o.cbmOverride) and flows through orderShipStats
+  // to every CBM readout (order detail, orders queue, shipment planning).
+  function onOrderCbmChange(val) {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    const n = parseFloat(val);
+    if (val === '' || val == null || isNaN(n) || n <= 0) { delete o.cbmOverride; }
+    else { o.cbmOverride = Math.round(n * 100) / 100; }
+    if (typeof saveOrders === 'function') saveOrders();
+    try { renderOrderDetail(_currentOrderId); } catch (_) {}
   }
 
   function onOrderInvoiceChange() {
