@@ -6899,6 +6899,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-prodeta-lead { font-size: 10px; font-weight: 600; color: #93b0ff; opacity: 0.9; }
     /* Final card layout bits — title separator, inline total, bottom ETA + task row. */
     .pl-card.pl-entity .pl-title-sep { height: 1px; background: rgba(255,255,255,0.08); margin: 11px -13px 12px; }
+    .pl-card.pl-entity .pl-progress { height: 4px; border-radius: 3px; background: rgba(255,255,255,0.08); margin: 3px -13px 12px; overflow: hidden; }
+    .pl-card.pl-entity .pl-progress-fill { height: 100%; background: linear-gradient(90deg, #16a34a, #4ade80); border-radius: 3px; transition: width .5s ease; box-shadow: 0 0 8px rgba(74,222,128,0.45); }
+    .pl-card-karen .pl-progress { background: rgba(0,0,0,0.08); }
     .pl-ident-assign { margin-left: auto; display: inline-flex; align-items: center; cursor: pointer; flex: 0 0 auto; }
     .pl-ident-assign .pl-avatar { width: 22px; height: 22px; font-size: 10px; }
     .pl-assign-plus { width: 24px; height: 24px; border-radius: 50%; border: 1.5px dashed rgba(255,255,255,0.22); color: #9ca3af; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; margin-left: 5px; flex: 0 0 auto; transition: color .12s, border-color .12s; }
@@ -55137,6 +55140,59 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!eta) return '';
     return `<div class="pl-etapill" title="Production ETA — ${eta.leadDays} business-day lead from the day it entered Production"><span class="pl-eta-k">Prod ETA</span><span class="pl-eta-d">${_plEsc(eta.dateFmt)}</span><span class="pl-eta-t">${eta.leadDays}d lead</span></div>`;
   }
+  // Progress toward arrival for an entity card — drives the title progress bar
+  // + the "Nd ETA" badge. Returns { pct, daysToEta, done } or null when there's
+  // no ETA to measure against (e.g. a pre-production order with no firm date).
+  function _plArrivalProgress(c) {
+    const DAY = 86400000, now = Date.now();
+    let etaDate = null, startDate = null, done = false;
+    if (c.kind === 'shipment') {
+      const s = shipmentData[c.id] || {};
+      done = (s.status === 'delivered' || s.status === 'received');
+      const er = s.eta || (s.tracking && s.tracking.eta) || '';
+      if (er) etaDate = new Date(er);
+      if (s.etd) startDate = new Date(s.etd);
+      else if (s.createdAt) startDate = new Date(s.createdAt);
+    } else if (c.kind === 'order' && c.stage === 'production') {
+      const o = orderData[c.id] || {};
+      const pe = (typeof _orderProductionEta === 'function') ? _orderProductionEta(o) : null;
+      if (pe && pe.date) etaDate = new Date(pe.date);
+      const sd = o.movedToProductionAt || o.notifiedAt || o.createdAt || o.dateCreated;
+      if (sd) startDate = new Date(sd);
+    }
+    if (!etaDate || isNaN(etaDate.getTime())) return null;
+    const etaMs = etaDate.getTime();
+    let pct;
+    if (done) pct = 100;
+    else if (startDate && !isNaN(startDate.getTime()) && etaMs > startDate.getTime()) {
+      pct = ((now - startDate.getTime()) / (etaMs - startDate.getTime())) * 100;
+    } else {
+      const daysLeft = (etaMs - now) / DAY;
+      pct = (1 - daysLeft / 30) * 100;
+    }
+    pct = Math.max(2, Math.min(100, Math.round(pct)));
+    return { pct, daysToEta: Math.ceil((etaMs - now) / DAY), done };
+  }
+  // Top-right badge: "Nd ETA" (days to arrival) when there's an ETA, else the
+  // plain days-in-stage age badge.
+  function _plEntityBadge(c) {
+    const p = _plArrivalProgress(c);
+    if (p) {
+      let txt, cls = '';
+      if (p.done) txt = 'Arrived';
+      else if (p.daysToEta <= 0) { txt = 'Due'; cls = ' age-old'; }
+      else { txt = `${p.daysToEta}d ETA`; cls = p.daysToEta <= 3 ? ' age-warn' : ''; }
+      return `<span class="pl-stage-age${cls}" title="${p.done ? 'Arrived' : (p.daysToEta > 0 ? 'Estimated arrival in ' + p.daysToEta + ' day' + (p.daysToEta === 1 ? '' : 's') : 'Arrival due / overdue')}">${txt}</span>`;
+    }
+    return _pipelineAgeBadge(c.since);
+  }
+  // The green arrival progress bar that replaces the title separator (falls back
+  // to a plain separator line when there's no ETA to measure).
+  function _plProgressBarHtml(c) {
+    const p = _plArrivalProgress(c);
+    if (!p) return '<div class="pl-title-sep"></div>';
+    return `<div class="pl-progress" title="${p.done ? 'Arrived' : (p.pct + '% of the way to arrival')}"><div class="pl-progress-fill" style="width:${p.pct}%;"></div></div>`;
+  }
   // A workbook row inside the expanded "Workbooks in this job" panel.
   function _plEntityChildRow(w) {
     const href = `#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}`;
@@ -55247,10 +55303,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       : '';
     const botrow = `<div class="pl-botrow">${_plProdEtaPillHtml(c)}${_cardTaskPillHtml(c)}</div>`;
     return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDrag ? 'Drag between lanes, click to view, right-click for options' : 'View details — right-click for options'}">
-      ${_pipelineAgeBadge(c.since)}
+      ${_plEntityBadge(c)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
-      <div class="pl-title-sep"></div>
+      ${_plProgressBarHtml(c)}
       <div class="pl-ident-row">${clientChip}${identSep}${identMid}${_plCardAssignHtml(cid)}</div>
       ${_entityIsDone('order', c.id) ? _doneBadgeHtml(orderData[c.id]) : ''}
       ${expand}
@@ -55322,10 +55378,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const etaPill = _plEtaPillHtml(s) || _shipmentStatusPillHtml(c.id);
     const botrow = `<div class="pl-botrow">${etaPill}${_cardTaskPillHtml(c)}</div>`;
     return `<div class="crm-card pl-card ${canDragShip ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDragShip ? 'Drag to Receiving to mark Delivered, click to view, right-click for options' : 'View details — right-click for options'}">
-      ${_pipelineAgeBadge(c.since)}
+      ${_plEntityBadge(c)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
-      <div class="pl-title-sep"></div>
+      ${_plProgressBarHtml(c)}
       <div class="pl-ident-row">${clientChip}${identSep}${identMid}${_plCardAssignHtml(cid)}</div>
       ${_entityIsDone('shipment', c.id) ? _doneBadgeHtml(shipmentData[c.id]) : ''}
       ${expand}
