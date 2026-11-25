@@ -6836,6 +6836,68 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-radius: 99px; background: rgba(239,68,68,0.20); color: #fca5a5;
       border: 1px solid rgba(252,165,165,0.35);
     }
+    /* ── Modern entity (order / shipment) pipeline cards ──────────────────
+       Scoped to .pl-card.pl-entity (higher specificity than .crm-card) so the
+       CRM board + workbook cards are untouched. */
+    .pl-card.pl-entity:not(.pl-card-karen) {
+      background: #161b24; border: 1px solid #262e3b; border-radius: 16px;
+      padding: 16px 16px 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.28);
+    }
+    .pl-card.pl-entity:not(.pl-card-karen):hover { border-color: #3a475f; box-shadow: 0 8px 22px rgba(0,0,0,0.34); transform: translateY(-1px); }
+    .pl-card.pl-entity .pl-card-title { font-size: 16px; font-weight: 800; color: #f3f4f6; letter-spacing: -0.01em; white-space: normal; padding-right: 56px; margin-bottom: 11px; line-height: 1.25; }
+    .pl-card.pl-entity .pl-stage-age { top: 13px; right: 13px; font-size: 10px; padding: 3px 9px; }
+    .pl-card.pl-entity .pl-card-menu-btn { top: 11px; }
+    /* identity row: client chip | workbook toggle */
+    .pl-ident-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 13px; }
+    .pl-client-chip { display: inline-flex; align-items: center; gap: 7px; padding: 3px 12px 3px 3px; border-radius: 999px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); font-size: 12px; font-weight: 600; color: #e5e7eb; max-width: 100%; overflow: hidden; }
+    .pl-client-ava { width: 23px; height: 23px; border-radius: 50%; background: #3a4a63; color: #e2e8f0; font-size: 10px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+    .pl-client-more { font-size: 11px; color: #94a3b8; font-weight: 700; }
+    .pl-ident-sep { width: 1px; align-self: stretch; min-height: 20px; background: rgba(255,255,255,0.13); }
+    .pl-wb-toggle { display: inline-flex; align-items: center; gap: 7px; padding: 5px 13px; border-radius: 999px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); color: #cbd5e1; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; text-align: left; line-height: 1.35; max-width: 100%; transition: background .12s; }
+    .pl-wb-toggle:hover { background: rgba(255,255,255,0.11); }
+    .pl-wb-chev { font-size: 11px; opacity: 0.7; transition: transform .15s; flex: 0 0 auto; }
+    .pl-card.pl-open .pl-wb-chev { transform: rotate(180deg); }
+    /* total row */
+    .pl-total-row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+    .pl-total-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #6b7280; }
+    .pl-total-val { font-size: 22px; font-weight: 800; color: #34d399; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
+    /* inset panel (ETA strip, Task status) */
+    .pl-panel { background: #1b2230; border: 1px solid #272f3d; border-radius: 12px; padding: 13px 14px; margin-bottom: 10px; }
+    .pl-panel-lbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: #6b7280; margin-bottom: 8px; }
+    .pl-eta-strip { display: flex; align-items: center; gap: 8px; }
+    .pl-eta-col { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+    .pl-eta-col.pl-eta-right { text-align: right; margin-left: auto; align-items: flex-end; }
+    .pl-eta-lbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; }
+    .pl-eta-date { font-size: 15px; font-weight: 800; color: #e5e7eb; display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+    .pl-eta-dash { flex: 1 1 auto; border-top: 1px dashed rgba(148,163,184,0.35); min-width: 12px; height: 0; }
+    .pl-eta-mid { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 13px; border-radius: 999px; flex: 0 0 auto; border: 1px solid transparent; }
+    .pl-eta-status { font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; }
+    .pl-eta-sub { font-size: 10px; opacity: 0.85; font-weight: 600; }
+    .pl-eta-mid.pl-track-pending { background: rgba(148,163,184,0.16); border-color: rgba(148,163,184,0.28); color: #cbd5e1; }
+    .pl-eta-mid.pl-track-in_transit { background: rgba(107,147,255,0.16); border-color: rgba(107,147,255,0.32); color: #bfdbfe; }
+    .pl-eta-mid.pl-track-delivered { background: rgba(22,163,74,0.18); border-color: rgba(22,163,74,0.36); color: #86efac; }
+    /* Task status panel line */
+    .pl-task-line { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; cursor: pointer; }
+    .pl-task-line .pl-task-dot { width: 9px; height: 9px; border-radius: 50%; }
+    .pl-task-line.pl-task-pending { color: #fbbf24; }
+    .pl-task-line.pl-task-pending .pl-task-dot { background: #f59e0b; }
+    .pl-task-line.pl-task-done { color: #34d399; }
+    .pl-task-line.pl-task-done .pl-task-dot { background: #16a34a; }
+    .pl-task-panel { cursor: pointer; transition: border-color .12s; }
+    .pl-task-panel:hover { border-color: #3a475f; }
+    /* footer */
+    .pl-card.pl-entity .pl-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 13px; padding-top: 13px; border-top: 1px solid rgba(255,255,255,0.07); cursor: pointer; }
+    .pl-foot-left { display: inline-flex; align-items: center; gap: 6px; }
+    .pl-foot-unassigned { font-size: 12px; color: #6b7280; }
+    .pl-foot-avatars { display: inline-flex; align-items: center; }
+    .pl-assign-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 15px; border-radius: 999px; border: 1px dashed rgba(255,255,255,0.22); color: #9ca3af; font-size: 12px; font-weight: 700; white-space: nowrap; transition: color .12s, border-color .12s; }
+    .pl-foot:hover .pl-assign-btn { border-color: var(--accent); color: var(--accent); }
+    /* Karen (light) entity card — keep panels + chips readable */
+    .pl-card-karen .pl-panel { background: rgba(0,0,0,0.05); border-color: rgba(124,45,18,0.20); }
+    .pl-card-karen .pl-client-chip, .pl-card-karen .pl-wb-toggle { background: rgba(124,45,18,0.08); border-color: rgba(124,45,18,0.22); color: #7c2d12; }
+    .pl-card-karen .pl-eta-date, .pl-card-karen .pl-total-lbl, .pl-card-karen .pl-panel-lbl, .pl-card-karen .pl-eta-lbl, .pl-card-karen .pl-foot-unassigned { color: #7c2d12 !important; }
+    .pl-card-karen .pl-total-val { color: #166534; }
+    .pl-card-karen .pl-foot { border-top-color: rgba(124,45,18,0.18); }
     /* ── Shipping Calendar ─────────────────────────────────────────────── */
     .cal-weekdays { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; }
     .cal-weekday { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); text-align:center; padding:4px 0; }
@@ -54918,6 +54980,115 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { if (location.hash === '#/pipeline') renderPipelineBoard(); } catch (_) {}
   }
 
+  // ── Modern entity-card building blocks (order / shipment cards) ────────────
+  function _plInitials(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    return (parts[0].charAt(0) + (parts[1] ? parts[1].charAt(0) : '')).toUpperCase();
+  }
+  function _plEntityClients(c) {
+    let list = Array.isArray(c.clients) ? c.clients.filter(Boolean) : [];
+    if (!list.length && c.sub) { const p = String(c.sub).split(' · ')[0].trim(); if (p) list = [p]; }
+    return list;
+  }
+  function _plClientChipHtml(c) {
+    const list = _plEntityClients(c);
+    if (!list.length) return '';
+    const name = list[0];
+    const more = list.length > 1 ? `<span class="pl-client-more">+${list.length - 1}</span>` : '';
+    return `<span class="pl-client-chip" title="${_plEsc(list.join(', '))}"><span class="pl-client-ava">${_plEsc(_plInitials(name))}</span>${_plEsc(name)}${more}</span>`;
+  }
+  function _plWbToggleHtml(text) {
+    if (!text) return '';
+    return `<button class="pl-wb-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');" title="Show / hide the workbooks in this card"><span>${_plEsc(text)}</span><span class="pl-wb-chev">▾</span></button>`;
+  }
+  function _plIdentRowHtml(clientChip, wbToggle) {
+    if (!clientChip && !wbToggle) return '';
+    const sep = (clientChip && wbToggle) ? '<span class="pl-ident-sep"></span>' : '';
+    return `<div class="pl-ident-row">${clientChip}${sep}${wbToggle}</div>`;
+  }
+  function _plTotalRowHtml(valStr) {
+    if (!valStr) return '';
+    return `<div class="pl-total-row"><span class="pl-total-lbl">Total</span><span class="pl-total-val">${_plEsc(valStr)}</span></div>`;
+  }
+  function _plEntityUsd(n) {
+    return (Number(n) > 0) ? '$' + (Number(n)).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : '';
+  }
+  function _plTaskPanelHtml(c) {
+    if (!c || !_PL_TASK_STAGES.has(c.stage)) return '';
+    const cid = _plCardId(c);
+    const cidJs = _plEsc(cid).replace(/'/g, "\\'");
+    const done = _cardTaskStatus(cid, c.stage) === 'done';
+    return `<div class="pl-panel pl-task-panel" onclick="event.stopPropagation(); _toggleCardTask('${cidJs}','${_plEsc(c.stage)}')" title="Task status for this stage — click to mark ${done ? 'Pending' : 'Done'}. Resets to Pending when the card moves to another column.">
+      <div class="pl-panel-lbl">Task Status</div>
+      <div class="pl-task-line ${done ? 'pl-task-done' : 'pl-task-pending'}"><span class="pl-task-dot"></span>${done ? 'Done' : 'Pending'}</div></div>`;
+  }
+  // ETD → status → ETA strip for a shipment card (mirrors the mockup).
+  function _shipmentEtaStripHtml(s) {
+    if (!s) return '';
+    const etd = s.etd ? _trackFmtDate(s.etd) : '';
+    const etaRaw = s.eta || (s.tracking && s.tracking.eta) || '';
+    const eta = etaRaw ? _trackFmtDate(etaRaw) : '';
+    let key, lbl;
+    if (s.tracking && s.tracking.status) {
+      const b = _trackBucket(s); key = b.key;
+      lbl = { pending: 'Pending', in_transit: 'In Transit', delivered: 'Delivered' }[key] || '';
+    } else {
+      key = (s.status === 'delivered' || s.status === 'received') ? 'delivered' : (s.status === 'in_transit' ? 'in_transit' : 'pending');
+      lbl = (typeof _SHIP_STATUS_LABEL === 'function') ? _SHIP_STATUS_LABEL(s.status) : (s.status || '');
+    }
+    if (!etd && !eta && !lbl) return '';
+    let sub = '';
+    if (s.etd && etaRaw) {
+      const d1 = new Date(s.etd), d2 = new Date(etaRaw);
+      if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) { const days = Math.round((d2 - d1) / 86400000); if (days > 0) sub = `${days} day${days === 1 ? '' : 's'}`; }
+    }
+    const dotCol = ({ pending: '#94a3b8', in_transit: '#6b93ff', delivered: '#22c55e' })[key] || '#94a3b8';
+    const canLaunch = !!_carrierTrackingUrl(s.carrier, s.trackingNumber);
+    const midAttr = canLaunch
+      ? ` onclick="event.stopPropagation(); _openShipmentTracking('${_plEsc(String(s.id)).replace(/'/g, "\\'")}')" style="cursor:pointer;" title="Open ${_plEsc(String(s.carrier || '').toUpperCase())} tracking page"`
+      : ' style="cursor:default;"';
+    return `<div class="pl-panel"><div class="pl-eta-strip">
+      <div class="pl-eta-col"><span class="pl-eta-lbl">ETD</span><span class="pl-eta-date">📅 ${_plEsc(etd || '—')}</span></div>
+      <span class="pl-eta-dash"></span>
+      <div class="pl-eta-mid pl-track-${key}"${midAttr}><span class="pl-eta-status"><span class="pl-track-dot" style="background:${dotCol};"></span>${_plEsc(lbl || '—')}</span>${sub ? `<span class="pl-eta-sub">${_plEsc(sub)}</span>` : ''}</div>
+      <span class="pl-eta-dash"></span>
+      <div class="pl-eta-col pl-eta-right"><span class="pl-eta-lbl">ETA</span><span class="pl-eta-date">📍 ${_plEsc(eta || '—')}</span></div>
+    </div></div>`;
+  }
+  // Production-ETA strip for an In-Production order card (same panel aesthetic).
+  function _plProdEtaStripHtml(c) {
+    if (c.stage !== 'production') return '';
+    const eta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(orderData[c.id]) : null;
+    if (!eta) return '';
+    return `<div class="pl-panel"><div class="pl-eta-strip">
+      <div class="pl-eta-col"><span class="pl-eta-lbl">Production ETA</span><span class="pl-eta-date">📅 ${_plEsc(eta.dateFmt)}</span></div>
+      <span class="pl-eta-dash"></span>
+      <div class="pl-eta-mid pl-track-in_transit" style="cursor:default;" title="${eta.leadDays} business-day lead from the day it entered Production"><span class="pl-eta-status">${eta.leadDays} day lead</span></div>
+    </div></div>`;
+  }
+  // Footer: assignees (or "Unassigned") on the left, "+ Assign" on the right.
+  function _plEntityFooterHtml(cid) {
+    const m = _plMeta[cid] || {};
+    const list = Array.isArray(m.assignees) ? m.assignees : [];
+    const note = m.note || '';
+    const nComments = Array.isArray(m.comments) ? m.comments.length : 0;
+    const enc = (typeof cid === 'string') ? cid.replace(/'/g, "\\'") : cid;
+    let left;
+    if (list.length) {
+      const avs = list.map(n => {
+        const col = (typeof CRM_ASSIGNEE_COLORS !== 'undefined' && CRM_ASSIGNEE_COLORS[n]) || { bg: '#4b5563', fg: '#fff' };
+        return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(n)}">${_plEsc(n.charAt(0).toUpperCase())}</span>`;
+      }).join('');
+      left = `<span class="pl-foot-avatars">${avs}</span>`;
+    } else {
+      left = `<span class="pl-foot-unassigned">Unassigned</span>`;
+    }
+    const noteDot = note ? `<span class="pl-meta-pill" title="Has notes">&#9998;</span>` : '';
+    const cmtDot = nComments ? `<span class="pl-meta-pill has-comments" title="${nComments} comment${nComments === 1 ? '' : 's'}">&#128172; ${nComments}</span>` : '';
+    return `<div class="pl-foot" onclick="event.stopPropagation(); openAssigneePicker('${enc}', event)" title="Assign / unassign"><span class="pl-foot-left">${left}${noteDot}${cmtDot}</span><span class="pl-assign-btn">+ Assign</span></div>`;
+  }
+
   function _pipelineOrderCardHtml(c) {
     const val = c.totalUsd > 0 ? `$${c.totalUsd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '';
     const wbs = c.workbooks || [];
@@ -54930,27 +55101,20 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'order:${c.id}')" ondragend="onPipelineDragEnd(event)"`
       : '';
     const cidJs = _plEsc(cid).replace(/'/g, "\\'");
-    // Production ETA pill — only for In-Production order cards: max lead in
-    // business days from the day it entered Production.
-    let _prodEtaHtml = '';
-    if (c.stage === 'production') {
-      const _eta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(orderData[c.id]) : null;
-      if (_eta) {
-        _prodEtaHtml = `<div style="margin-top:6px;"><span class="pl-prod-eta" style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.18); color:#93c5fd; border:1px solid rgba(59,130,246,0.40); font-size:10px; font-weight:700; letter-spacing:0.04em;" title="Production ETA — ${_eta.leadDays} business days (no weekends) from the day it entered Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0; font-variant-numeric:tabular-nums;">${_eta.dateFmt}</span><span style="text-transform:none; letter-spacing:0; opacity:0.75;">(${_eta.leadDays} day lead)</span></span></div>`;
-      }
-    }
+    const clientChip = _plClientChipHtml(c);
+    const wbToggle = children ? _plWbToggleHtml(_wbClientBreakdown(wbs, wbs.length)) : '';
     return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDrag ? 'Drag between lanes, click to view, right-click for options' : 'View details — right-click for options'}">
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
-      <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
+      ${_plIdentRowHtml(clientChip, wbToggle)}
+      ${_plTotalRowHtml(val)}
       ${_entityIsDone('order', c.id) ? _doneBadgeHtml(orderData[c.id]) : ''}
-      ${_prodEtaHtml}
-      ${_cardTaskPillHtml(c)}
+      ${_plProdEtaStripHtml(c)}
+      ${_plTaskPanelHtml(c)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
-      ${children ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${_plEsc(_wbClientBreakdown(wbs, wbs.length))}</button>
-      <div class="pl-children">${children}</div>` : ''}
-      ${_plAssigneeChips(cid)}
+      ${children ? `<div class="pl-children">${children}</div>` : ''}
+      ${_plEntityFooterHtml(cid)}
     </div>`;
   }
 
@@ -54997,18 +55161,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const dragAttrs = canDragShip
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'shipment:${c.id}')" ondragend="onPipelineDragEnd(event)"`
       : '';
+    const clientChip = _plClientChipHtml(c);
+    const wbToggle = body ? _plWbToggleHtml(_shipmentWbBreakdown(c)) : '';
+    const val = _plEntityUsd(c.value);
+    const etaStrip = _shipmentEtaStripHtml(shipmentData[c.id]) || `<div class="pl-panel"><div class="pl-panel-lbl">Status</div>${_shipmentStatusPillHtml(c.id)}</div>`;
     return `<div class="crm-card pl-card ${canDragShip ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDragShip ? 'Drag to Receiving to mark Delivered, click to view, right-click for options' : 'View details — right-click for options'}">
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
-      ${c.sub ? `<div class="pl-card-sub">${_plEsc(c.sub)}</div>` : ''}
+      ${_plIdentRowHtml(clientChip, wbToggle)}
+      ${_plTotalRowHtml(val)}
       ${_entityIsDone('shipment', c.id) ? _doneBadgeHtml(shipmentData[c.id]) : ''}
-      ${_shipmentStatusPillHtml(c.id)}
-      ${_cardTaskPillHtml(c)}
+      ${etaStrip}
+      ${_plTaskPanelHtml(c)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
-      ${body ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${_plEsc(_shipmentWbBreakdown(c))}</button>
-      <div class="pl-children">${body}</div>` : ''}
-      ${_plAssigneeChips(cid)}
+      ${body ? `<div class="pl-children">${body}</div>` : ''}
+      ${_plEntityFooterHtml(cid)}
     </div>`;
   }
 
