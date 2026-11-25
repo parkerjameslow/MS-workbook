@@ -23534,8 +23534,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     if (!perUnitRmb) perUnitRmb = parseFloat(totalRmb) || 0;
     const price = perUnitRmb > 0 ? perUnitRmb.toFixed(3) : '';
-    // Cascade price to ALL tier rows (all are view-only, all show the same unit cost)
-    rows.forEach(row => { row.dataset.price = price; });
+    // ONLY tier 1 (the RFQ-linked, read-only row) mirrors the RFQ price. Tiers
+    // 2+ are operator-entered quantity-discount prices and must NEVER be
+    // overwritten from the RFQ — otherwise manual prices vanish on load
+    // (recalcRfqTotals runs right after tiers load) and on every RFQ edit.
+    if (rows[0]) rows[0].dataset.price = price;
     // Sync qty into the first tier row from ONLY the FIRST RFQ line
     // item's qty — NOT the grand total across every line item. Per user:
     // multi-item workbooks price their tiers off the lead line item's
@@ -24576,13 +24579,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tbody = document.getElementById('wb-tier-body');
     const tr = document.createElement('tr');
     tr.id = `wb-tier-${id}`;
-    // First row: read-only (driven by RFQ total). All others: inherit tier-1 price by default.
+    // First row: read-only (driven by the RFQ total). All others: operator
+    // enters the quantity-discount price. New non-first rows start BLANK — they
+    // are never auto-filled from the RFQ / tier 1.
     const isFirst = (id === 1);
-    // For new non-first rows with no saved price, inherit from tier 1
-    if (!isFirst && !unitPrice) {
-      const tier1 = document.getElementById('wb-tier-1');
-      if (tier1 && tier1.dataset.price) unitPrice = tier1.dataset.price;
-    }
     tr.dataset.price = unitPrice || '';
     // Tier 1: Unit Price (RMB) is read-only — driven by the RFQ Grand
     // Total (auto-mirrored). All other tiers: Unit Price (RMB) is an
@@ -24691,13 +24691,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
     if (totalEl) {
-      // Total ceil-rounded to the cent so it ties to the ceil per-unit
-      // displayed above (and to the Pricing tab Product Cost total).
+      // Total = qty × exact per-unit USD (RMB ÷ rate), at 3 decimals — matches
+      // the per-unit USD shown above and the Pricing-tab tier total, so the
+      // RMB↔USD conversion is accurate (no ceil-to-cent drift).
+      const rateUsd = USD_TO_RMB > 0 ? USD_TO_RMB : 7.2;
       if (useRange && !isNaN(qty) && qty > 0 && ps.grandQty > 0 && ps.grandUsd > 0) {
         const avgUsd = ps.grandUsd / ps.grandQty;
-        totalEl.textContent = '$' + fmt2(_msCeil2(qty * avgUsd));
+        totalEl.textContent = '$' + fmt3(qty * avgUsd);
       } else if (!isNaN(qty) && !isNaN(rmb) && rmb > 0) {
-        totalEl.textContent = '$' + fmt2(_msCeil2(qty * (rmb / USD_TO_RMB)));
+        totalEl.textContent = '$' + fmt3(qty * (rmb / rateUsd));
       } else {
         totalEl.textContent = '—';
       }
