@@ -6909,6 +6909,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-leadbar-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
     .pl-leadbar-prod .pl-leadbar-fill { background: linear-gradient(90deg, #6366f1, #818cf8); box-shadow: 0 0 6px rgba(129,140,248,0.45); }
     .pl-leadbar-ship .pl-leadbar-fill { background: linear-gradient(90deg, #14b8a6, #2dd4bf); box-shadow: 0 0 6px rgba(45,212,191,0.45); }
+    .pl-leadbar-missing .pl-leadbar-fill { background: linear-gradient(90deg, #f59e0b, #fbbf24); box-shadow: 0 0 6px rgba(251,191,36,0.5); }
+    .pl-leadbar-tag-warn { color: #fbbf24 !important; }
     .pl-leadbar-tag { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; color: #9aa6b8; white-space: nowrap; min-width: 58px; text-align: right; font-variant-numeric: tabular-nums; }
     .pl-card-karen .pl-leadbar-track { background: rgba(0,0,0,0.08); }
     .pl-card-karen .pl-leadbar-tag { color: #7c2d12; }
@@ -55279,16 +55281,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const start = new Date(startRaw);
       if (isNaN(start.getTime())) return '';
       const leads = _orderProdShipLeads(o);
-      if (leads.prodLead <= 0 && leads.shipLead <= 0) return '';
       let rows = '', prodEnd = null;
       if (leads.prodLead > 0) {
         prodEnd = _addBusinessDays(start, leads.prodLead);
         rows += bar('pl-leadbar-prod', prodEnd ? clampPct(start.getTime(), prodEnd.getTime()) : 2, 'Prod ' + fmt(prodEnd), `Production: ${leads.prodLead} business days → done ~${fmt(prodEnd)}`);
+      } else {
+        // No production lead entered → can't compute a production ETA. Call it
+        // out (click to open the order and add a lead time on the RFQ line).
+        rows += `<div class="pl-leadbar" style="cursor:pointer;" onclick="event.stopPropagation(); location.hash='#/order/${c.id}'" title="No production lead time entered on this order's workbook(s). Open the order and set a lead time on the RFQ line so the production ETA can be calculated."><div class="pl-leadbar-track pl-leadbar-missing"><div class="pl-leadbar-fill" style="width:8%;"></div></div><span class="pl-leadbar-tag pl-leadbar-tag-warn">⚠ Set prod lead</span></div>`;
       }
       if (leads.shipLead > 0) {
-        const ss = prodEnd || start, se = _addBusinessDays(ss, leads.shipLead);
-        const started = ss && now >= ss.getTime();
-        rows += bar('pl-leadbar-ship', (se && started) ? clampPct(ss.getTime(), se.getTime()) : 0, 'Ship ' + fmt(se), `Shipping: ${leads.shipLead} business days after production → arrives ~${fmt(se)}`);
+        if (prodEnd) {
+          const se = _addBusinessDays(prodEnd, leads.shipLead);
+          const started = now >= prodEnd.getTime();
+          rows += bar('pl-leadbar-ship', (se && started) ? clampPct(prodEnd.getTime(), se.getTime()) : 0, 'Ship ' + fmt(se), `Shipping: ${leads.shipLead} business days after production → arrives ~${fmt(se)}`);
+        } else {
+          // Production ETA unknown → the ship window can't be projected yet.
+          rows += bar('pl-leadbar-ship', 0, 'Ship —', 'Enter a production lead first so the shipping window can be projected');
+        }
       }
       return rows ? `<div class="pl-dualbars">${rows}</div>` : '';
     }
