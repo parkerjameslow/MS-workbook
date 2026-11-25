@@ -6815,6 +6815,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-drill-toggle:hover { color: #bfdbfe; text-decoration: underline; }
     .pl-drill-toggle::before { content: '\25B8  '; }
     .pl-card.pl-open .pl-drill-toggle::before { content: '\25BE  '; }
+    /* Per-stage Task status pill (Pending / Done) on Pre-Prod / Production /
+       Shipments cards — click to toggle. */
+    .pl-task-pill {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+      padding: 3px 11px; border-radius: 999px; font-size: 11px; font-weight: 800;
+      letter-spacing: 0.02em; cursor: pointer; user-select: none;
+      border: 1px solid transparent; transition: filter .12s;
+    }
+    .pl-task-pill:hover { filter: brightness(1.06); }
+    .pl-task-pill .pl-task-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+    .pl-task-pending { background: rgba(245,158,11,0.16); color: #b45309; border-color: rgba(245,158,11,0.35); }
+    .pl-task-pending .pl-task-dot { background: #f59e0b; }
+    .pl-task-done { background: rgba(16,185,129,0.16); color: #047857; border-color: rgba(16,185,129,0.38); }
+    .pl-task-done .pl-task-dot { background: #16a34a; }
     /* Change-request flag on an order / shipment card. */
     .pl-flag {
       display: inline-block; margin-top: 6px; font-size: 9px; font-weight: 800;
@@ -54861,6 +54875,37 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   // Order entity card (Orders queue / In Production) — titled by client,
   // drills down to its workbooks. Click header → open the order.
+  // ── Per-card stage Task status (Pending / Done) ───────────────────────────
+  // Shows on Pre-Production (orders), In Production (production) and Shipments
+  // cards only. Stored in the shared _plMeta blob keyed by card id, stamped with
+  // the STAGE it was set in (taskStage) so it auto-resets to Pending whenever the
+  // card lands in a different column ("starts over" on every move). Team-wide.
+  const _PL_TASK_STAGES = new Set(['orders', 'production', 'shipments']);
+  function _cardTaskStatus(cid, stage) {
+    const m = _plMeta[cid] || {};
+    // A status only counts while the card is still in the column it was set in.
+    if (m.taskStage !== stage) return 'pending';
+    return m.taskStatus === 'done' ? 'done' : 'pending';
+  }
+  function _cardTaskPillHtml(c) {
+    if (!c || !_PL_TASK_STAGES.has(c.stage)) return '';
+    const cid = _plCardId(c);
+    const cidJs = _plEsc(cid).replace(/'/g, "\\'");
+    const done = _cardTaskStatus(cid, c.stage) === 'done';
+    return `<div class="pl-task-pill ${done ? 'pl-task-done' : 'pl-task-pending'}"
+                 onclick="event.stopPropagation(); _toggleCardTask('${cidJs}','${_plEsc(c.stage)}')"
+                 title="Task status for this stage — click to mark ${done ? 'Pending' : 'Done'}. Resets to Pending when the card moves to another column.">
+      <span class="pl-task-dot"></span>Task: ${done ? 'Done' : 'Pending'}</div>`;
+  }
+  function _toggleCardTask(cid, stage) {
+    const next = _cardTaskStatus(cid, stage) === 'done' ? 'pending' : 'done';
+    const m = _plMeta[cid] || (_plMeta[cid] = {});
+    m.taskStatus = next;
+    m.taskStage = stage;
+    _persistPlMeta();
+    try { if (location.hash === '#/pipeline') renderPipelineBoard(); } catch (_) {}
+  }
+
   function _pipelineOrderCardHtml(c) {
     const val = c.totalUsd > 0 ? `$${c.totalUsd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '';
     const wbs = c.workbooks || [];
@@ -54889,6 +54934,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
       ${_entityIsDone('order', c.id) ? _doneBadgeHtml(orderData[c.id]) : ''}
       ${_prodEtaHtml}
+      ${_cardTaskPillHtml(c)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${children ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${_plEsc(_wbClientBreakdown(wbs, wbs.length))}</button>
       <div class="pl-children">${children}</div>` : ''}
@@ -54939,6 +54985,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${c.sub ? `<div class="pl-card-sub">${_plEsc(c.sub)}</div>` : ''}
       ${_entityIsDone('shipment', c.id) ? _doneBadgeHtml(shipmentData[c.id]) : ''}
       ${_shipmentStatusPillHtml(c.id)}
+      ${_cardTaskPillHtml(c)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${body ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${_plEsc(_shipmentWbBreakdown(c))}</button>
       <div class="pl-children">${body}</div>` : ''}
@@ -55718,6 +55765,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         note: (lm.note || sm.note || ''),
         comments,
       };
+      // Per-stage Task status — prefer ours (we may have just toggled it), else
+      // keep the server's so it isn't dropped by a concurrent save.
+      const ts = lm.taskStatus || sm.taskStatus;
+      if (ts) { out[cid].taskStatus = ts; out[cid].taskStage = (lm.taskStatus ? lm.taskStage : sm.taskStage) || ''; }
     });
     return out;
   }
@@ -55991,9 +56042,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const assignees = Array.from(_plModalAssignees);
     // Comments are appended separately (and persisted on post) — carry them
     // through so Save never wipes the thread.
-    const comments = (_plMeta[_plModalId] || {}).comments || [];
-    if (!assignees.length && !note && !comments.length) delete _plMeta[_plModalId];
-    else _plMeta[_plModalId] = { assignees, note, comments };
+    const prev = _plMeta[_plModalId] || {};
+    const comments = prev.comments || [];
+    const task = prev.taskStatus ? { taskStatus: prev.taskStatus, taskStage: prev.taskStage } : {};
+    if (!assignees.length && !note && !comments.length && !prev.taskStatus) delete _plMeta[_plModalId];
+    else _plMeta[_plModalId] = Object.assign({ assignees, note, comments }, task);
     _persistPlMeta();
     if (silent) {
       // Tiny "✓ Saved" flash so the operator trusts the auto-save.
